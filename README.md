@@ -40,6 +40,12 @@ book-name/
 
 You can edit these files outside the app. The app reads the chapter order from `book.json`. Keep each chapter filename and notes filename unique and within `chapters/`.
 
+## Git for each book
+
+Open the **Git** tab in the side panel to set up a repository in the current book folder, inspect changed files and diffs, commit selected files, create or switch local branches, and fetch, pull, or push. Existing book repositories also work. New repositories ignore `exports/` and `.DS_Store` by default. Add an `origin` remote in the panel to sync; Git uses the credentials configured on your Mac. Git identity (`user.name` and `user.email`) must be configured to commit.
+
+The app saves pending writing before Git actions. Branch switching and pulling require a clean working tree. Pull uses fast-forward only, so diverged branches need to be resolved with Git or Codex outside the app. The panel never auto-commits or auto-pushes.
+
 ## Writing and AI
 
 The editor supports bold, italics, subheadings, scene breaks, and undo/redo. Changes save automatically. The assistant can review a chapter, check continuity, answer questions, and run a final editor pass. An OpenAI API key is entered in Settings; the encrypted value is kept in the app's data directory using Electron's macOS Keychain-backed safe storage. The key is never stored in a book folder.

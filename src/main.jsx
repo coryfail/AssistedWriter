@@ -30,6 +30,11 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Asterisk,
+  GitBranch,
+  GitCommitHorizontal,
+  RefreshCw,
+  Upload,
+  Download,
 } from "lucide-react";
 import "./style.css";
 
@@ -60,6 +65,13 @@ function App() {
   const [newAuthor, setNewAuthor] = useState("");
   const [keyInput, setKeyInput] = useState("");
   const [hasKey, setHasKey] = useState(false);
+  const [gitState, setGitState] = useState(null);
+  const [gitBusy, setGitBusy] = useState(false);
+  const [gitMessage, setGitMessage] = useState("");
+  const [gitBranchName, setGitBranchName] = useState("");
+  const [gitRemoteUrl, setGitRemoteUrl] = useState("");
+  const [gitSelected, setGitSelected] = useState([]);
+  const [gitDiff, setGitDiff] = useState(null);
   const selectedRef = useRef(null);
   const titleRef = useRef("");
   const rootRef = useRef(null);
@@ -121,6 +133,49 @@ function App() {
     [],
   );
   const current = book?.chapters.find((c) => c.id === selectedId);
+  useEffect(() => {
+    if (book?.root && sidePanel === "git") refreshGit(book.root);
+  }, [book?.root, sidePanel]);
+
+  async function refreshGit(root = book?.root) {
+    if (!root) return;
+    try {
+      const state = await api.gitStatus(root);
+      setGitState(state);
+      setGitSelected(state.files?.map((file) => file.path) || []);
+      setGitDiff(null);
+    } catch (error) {
+      announce(error.message);
+    }
+  }
+
+  async function gitAction(action, success, reload = false) {
+    if (gitBusy) return;
+    setGitBusy(true);
+    try {
+      await flush();
+      const state = await action();
+      if (reload) showBook(await api.loadBook(book.root));
+      setGitState(state);
+      setGitSelected(state.files?.map((file) => file.path) || []);
+      setGitDiff(null);
+      if (success) announce(success);
+    } catch (error) {
+      announce(error.message);
+      await refreshGit(book.root);
+    } finally {
+      setGitBusy(false);
+    }
+  }
+
+  async function previewGitFile(file) {
+    try {
+      await flush();
+      setGitDiff({ path: file, text: await api.gitDiff(book.root, file) });
+    } catch (error) {
+      announce(error.message);
+    }
+  }
 
   function announce(message) {
     setToast(message);
@@ -167,6 +222,8 @@ function App() {
       emitUpdate: false,
     });
     setResult(null);
+    setGitState(null);
+    setGitDiff(null);
     setSection("write");
     setSaveState("Saved");
     api
@@ -786,15 +843,23 @@ function App() {
         )}
       </main>
       {panelOpen && (
-        <aside className="ai-panel">
+        <aside className={`ai-panel ${sidePanel === "git" ? "git-panel" : ""}`}>
           <div className="ai-panel-head">
             <div className="ai-heading">
               <span className="ai-spark">
-                <Sparkles size={18} />
+                {sidePanel === "git" ? (
+                  <GitBranch size={18} />
+                ) : (
+                  <Sparkles size={18} />
+                )}
               </span>
               <div>
-                <span className="eyebrow">WRITING COMPANION</span>
-                <h3>Editorial desk</h3>
+                <span className="eyebrow">
+                  {sidePanel === "git"
+                    ? "BOOK REPOSITORY"
+                    : "WRITING COMPANION"}
+                </span>
+                <h3>{sidePanel === "git" ? "Git desk" : "Editorial desk"}</h3>
               </div>
             </div>
             <button className="icon" onClick={() => setPanelOpen(false)}>
@@ -814,9 +879,261 @@ function App() {
             >
               <PenLine size={16} /> Editor mode
             </button>
+            <button
+              className={sidePanel === "git" ? "active" : ""}
+              onClick={() => setSidePanel("git")}
+            >
+              <GitBranch size={16} /> Git
+            </button>
           </div>
           <div className="ai-scroll">
-            {sidePanel === "assist" ? (
+            {sidePanel === "git" ? (
+              <div className="git-content">
+                {!gitState ? (
+                  <div className="ai-busy">
+                    <LoaderCircle className="spin" size={19} /> Checking book
+                    repository…
+                  </div>
+                ) : !gitState.initialized ? (
+                  <div className="git-empty">
+                    <GitBranch size={25} />
+                    <h4>Version this book</h4>
+                    <p>
+                      Set up a Git repository inside this book folder to track
+                      chapters, notes, and editorial reports.
+                    </p>
+                    <button
+                      className="editor-run"
+                      disabled={gitBusy}
+                      onClick={() =>
+                        gitAction(
+                          () => api.gitInit(book.root),
+                          "Git is ready for this book.",
+                        )
+                      }
+                    >
+                      Set up Git
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="git-branch-head">
+                      <span className="eyebrow">CURRENT BRANCH</span>
+                      <button
+                        className="icon"
+                        title="Refresh Git status"
+                        disabled={gitBusy}
+                        onClick={() => refreshGit()}
+                      >
+                        <RefreshCw size={16} />
+                      </button>
+                    </div>
+                    <select
+                      className="git-select"
+                      value={gitState.branch || ""}
+                      disabled={gitBusy || !gitState.branch}
+                      onChange={(event) =>
+                        gitAction(
+                          () => api.gitSwitch(book.root, event.target.value),
+                          `Switched to ${event.target.value}.`,
+                          true,
+                        )
+                      }
+                    >
+                      {!gitState.branch && (
+                        <option value="">No commits yet</option>
+                      )}
+                      {gitState.branches.map((branch) => (
+                        <option key={branch} value={branch}>
+                          {branch}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="git-tracking">
+                      {gitState.upstream
+                        ? `${gitState.upstream} · ${gitState.ahead} ahead, ${gitState.behind} behind`
+                        : "No upstream branch yet"}
+                    </div>
+                    <div className="git-inline-form">
+                      <input
+                        aria-label="New branch name"
+                        placeholder="New branch name"
+                        value={gitBranchName}
+                        onChange={(event) =>
+                          setGitBranchName(event.target.value)
+                        }
+                      />
+                      <button
+                        disabled={gitBusy || !gitBranchName.trim()}
+                        onClick={() =>
+                          gitAction(
+                            async () => {
+                              const state = await api.gitCreateBranch(
+                                book.root,
+                                gitBranchName,
+                              );
+                              setGitBranchName("");
+                              return state;
+                            },
+                            "Branch created.",
+                            true,
+                          )
+                        }
+                      >
+                        Create
+                      </button>
+                    </div>
+                    <div className="git-section-title">
+                      <span>CHANGED FILES · {gitState.files.length}</span>
+                    </div>
+                    {gitState.files.length ? (
+                      <div className="git-files">
+                        {gitState.files.map((file) => (
+                          <div className="git-file" key={file.path}>
+                            <input
+                              type="checkbox"
+                              aria-label={`Include ${file.path} in commit`}
+                              checked={gitSelected.includes(file.path)}
+                              onChange={(event) =>
+                                setGitSelected((prev) =>
+                                  event.target.checked
+                                    ? [...prev, file.path]
+                                    : prev.filter((name) => name !== file.path),
+                                )
+                              }
+                            />
+                            <button
+                              title={`Preview ${file.path}`}
+                              onClick={() => previewGitFile(file.path)}
+                            >
+                              <span>{file.path}</span>
+                              <small>{file.code.trim() || "modified"}</small>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="git-muted">Working tree clean.</p>
+                    )}
+                    {gitDiff && (
+                      <div className="git-diff">
+                        <div>
+                          <strong>{gitDiff.path}</strong>
+                          <button
+                            className="icon"
+                            onClick={() => setGitDiff(null)}
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                        <pre>{gitDiff.text || "No text diff available."}</pre>
+                      </div>
+                    )}
+                    <textarea
+                      className="git-message"
+                      aria-label="Commit message"
+                      placeholder="Commit message"
+                      value={gitMessage}
+                      onChange={(event) => setGitMessage(event.target.value)}
+                    />
+                    <button
+                      className="git-commit"
+                      disabled={
+                        gitBusy || !gitMessage.trim() || !gitSelected.length
+                      }
+                      onClick={() =>
+                        gitAction(async () => {
+                          const state = await api.gitCommit(
+                            book.root,
+                            gitMessage,
+                            gitSelected,
+                          );
+                          setGitMessage("");
+                          return state;
+                        }, "Commit created.")
+                      }
+                    >
+                      <GitCommitHorizontal size={16} /> Commit selected files
+                    </button>
+                    <div className="git-section-title">
+                      <span>REMOTE</span>
+                    </div>
+                    {gitState.remote ? (
+                      <p className="git-remote" title={gitState.remote}>
+                        {gitState.remote}
+                      </p>
+                    ) : (
+                      <div className="git-inline-form">
+                        <input
+                          aria-label="Origin remote URL"
+                          placeholder="GitHub repository URL"
+                          value={gitRemoteUrl}
+                          onChange={(event) =>
+                            setGitRemoteUrl(event.target.value)
+                          }
+                        />
+                        <button
+                          disabled={gitBusy || !gitRemoteUrl.trim()}
+                          onClick={() =>
+                            gitAction(
+                              () => api.gitRemote(book.root, gitRemoteUrl),
+                              "Origin remote added.",
+                            )
+                          }
+                        >
+                          Add
+                        </button>
+                      </div>
+                    )}
+                    <div className="git-sync">
+                      <button
+                        disabled={gitBusy || !gitState.remote}
+                        onClick={() =>
+                          gitAction(
+                            () => api.gitSync(book.root, "fetch"),
+                            "Fetched from origin.",
+                          )
+                        }
+                      >
+                        <RefreshCw size={15} /> Fetch
+                      </button>
+                      <button
+                        disabled={
+                          gitBusy || !gitState.remote || !gitState.upstream
+                        }
+                        onClick={() =>
+                          gitAction(
+                            () => api.gitSync(book.root, "pull"),
+                            "Pulled latest commits.",
+                            true,
+                          )
+                        }
+                      >
+                        <Download size={15} /> Pull
+                      </button>
+                      <button
+                        disabled={
+                          gitBusy || !gitState.remote || !gitState.branch
+                        }
+                        onClick={() =>
+                          gitAction(
+                            () => api.gitSync(book.root, "push"),
+                            "Pushed branch.",
+                          )
+                        }
+                      >
+                        <Upload size={15} /> Push
+                      </button>
+                    </div>
+                    <p className="scope-note">
+                      Pull accepts fast-forward updates. Commit or resolve local
+                      changes before switching branches or pulling. Git uses
+                      your Mac’s configured credentials.
+                    </p>
+                  </>
+                )}
+              </div>
+            ) : sidePanel === "assist" ? (
               <>
                 <div className="ai-intro">
                   <div className="intro-icon">
@@ -911,13 +1228,13 @@ function App() {
                 </p>
               </>
             )}
-            {busy && (
+            {sidePanel !== "git" && busy && (
               <div className="ai-busy">
                 <LoaderCircle className="spin" size={20} /> Reading your
                 chapter…
               </div>
             )}
-            {result && (
+            {sidePanel !== "git" && result && (
               <div className="review-result">
                 <div className="result-heading">
                   <span className="eyebrow">
@@ -993,8 +1310,14 @@ function App() {
             )}
           </div>
           <div className="ai-foot">
-            <span className="privacy-dot" /> AI reads only when you ask. Edits
-            need your approval.
+            {sidePanel === "git" ? (
+              "Git runs in this book folder."
+            ) : (
+              <>
+                <span className="privacy-dot" /> AI reads only when you ask.
+                Edits need your approval.
+              </>
+            )}
           </div>
         </aside>
       )}

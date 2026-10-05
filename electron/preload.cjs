@@ -19,4 +19,13 @@ contextBridge.exposeInMainWorld("writer", {
   approve: (root, chapterId, quote, replacement, hash) =>
     invoke("ai:approve", root, chapterId, quote, replacement, hash),
   export: (root, format) => invoke("book:export", root, format),
+  gitStatus: (root) => invoke("git:status", root),
+  gitInit: (root) => invoke("git:init", root),
+  gitDiff: (root, file) => invoke("git:diff", root, file),
+  gitCommit: (root, message, files) =>
+    invoke("git:commit", root, message, files),
+  gitSwitch: (root, branch) => invoke("git:switch", root, branch),
+  gitCreateBranch: (root, branch) => invoke("git:create-branch", root, branch),
+  gitRemote: (root, url) => invoke("git:remote", root, url),
+  gitSync: (root, action) => invoke("git:sync", root, action),
 });

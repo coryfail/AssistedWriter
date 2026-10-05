@@ -10,6 +10,7 @@ const path = require("node:path");
 const book = require("./book.cjs");
 const { review } = require("./ai.cjs");
 const { exportBook } = require("./export.cjs");
+const git = require("./git.cjs");
 
 let mainWindow;
 app.setName("Assisted Writer");
@@ -163,3 +164,17 @@ ipcMain.handle("book:export", async (_event, root, format) => {
   await exportBook(root, format, result.filePath);
   return result.filePath;
 });
+ipcMain.handle("git:status", (_event, root) => git.status(root));
+ipcMain.handle("git:init", (_event, root) => git.initialize(root));
+ipcMain.handle("git:diff", (_event, root, file) => git.diff(root, file));
+ipcMain.handle("git:commit", (_event, root, message, files) =>
+  git.commit(root, message, files),
+);
+ipcMain.handle("git:switch", (_event, root, branch) =>
+  git.switchBranch(root, branch),
+);
+ipcMain.handle("git:create-branch", (_event, root, branch) =>
+  git.createBranch(root, branch),
+);
+ipcMain.handle("git:remote", (_event, root, url) => git.setRemote(root, url));
+ipcMain.handle("git:sync", (_event, root, action) => git.sync(root, action));
