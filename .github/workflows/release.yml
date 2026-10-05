@@ -11,7 +11,7 @@ permissions:
 jobs:
   mac-release:
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -28,24 +28,69 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Package Apple Silicon app
+      - name: Require release credentials
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: npm run package:mac
-
-      - name: Verify packages
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing $name. Configure Developer ID signing and Apple notarization secrets before publishing." >&2
+              exit 1
+            fi
+          done
+
+      - name: Set prerelease version
+        id: version
+        run: |
+          base_version="$(node -p 'require("./package.json").version')"
+          release_version="${base_version}-beta.${GITHUB_RUN_NUMBER}"
+          npm version "$release_version" --no-git-tag-version --ignore-scripts
+          echo "base=$base_version" >> "$GITHUB_OUTPUT"
+          echo "version=$release_version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$release_version" >> "$GITHUB_OUTPUT"
+
+      - name: Build, sign, and notarize universal Mac app
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          BASE_VERSION: ${{ steps.version.outputs.base }}
+        run: npm run package:mac -- --config.mac.bundleShortVersion="$BASE_VERSION" --config.mac.bundleVersion="$GITHUB_RUN_NUMBER"
+
+      - name: Verify signed packages
+        env:
+          BASE_VERSION: ${{ steps.version.outputs.base }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          app="dist/mac-universal/Assisted Writer.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          spctl --assess --type execute --verbose=4 "$app"
+          xcrun stapler validate "$app"
+          architectures="$(lipo -archs "$app/Contents/MacOS/Assisted Writer")"
+          [[ "$architectures" == *arm64* && "$architectures" == *x86_64* ]]
+          app_version="$(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/Info.plist")"
+          build_number="$(plutil -extract CFBundleVersion raw -o - "$app/Contents/Info.plist")"
+          [[ "$app_version" == "$BASE_VERSION" && "$build_number" == "$GITHUB_RUN_NUMBER" ]]
+          [[ "$(node -p 'require("./package.json").version')" == "$RELEASE_VERSION" ]]
           hdiutil verify dist/*.dmg
           unzip -t dist/*-mac.zip > /dev/null
+          (cd dist && shasum -a 256 *.dmg *-mac.zip > SHA256SUMS.txt)
 
-      - name: Publish GitHub release
+      - name: Publish versioned GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
-          tag="main-${GITHUB_SHA:0:12}"
-          gh release create "$tag" dist/*.dmg dist/*-mac.zip \
+          gh release create "$RELEASE_TAG" dist/*.dmg dist/*-mac.zip dist/SHA256SUMS.txt \
             --target "$GITHUB_SHA" \
-            --title "Assisted Writer main ${GITHUB_SHA:0:7}" \
-            --notes "Automated Apple Silicon build from commit $GITHUB_SHA. This development build is unsigned and has not been notarized by Apple." \
+            --title "Assisted Writer $RELEASE_VERSION" \
+            --notes "Universal Mac build for Intel and Apple Silicon from commit $GITHUB_SHA. Signed with Developer ID and notarized by Apple." \
             --prerelease \
             --latest=false
