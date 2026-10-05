@@ -21,7 +21,7 @@ The app build is placed under `dist/`. Local builds without a Developer ID certi
 
 Each push to `main` runs the Mac release workflow. It turns the source version (currently `0.2.0`) into a unique prerelease such as `v0.2.0-beta.4`, builds one universal app for Intel and Apple Silicon Macs, and publishes a DMG, ZIP, and SHA-256 checksum file. The release is published only after code-signature, Gatekeeper, notarization, architecture, DMG, and ZIP checks pass.
 
-Distribution requires an Apple Developer ID Application certificate and notarization credentials. Configure these GitHub Actions secrets before the workflow can publish: `MAC_CSC_LINK` (base64-encoded `.p12`), `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`. Without them, the workflow fails before packaging and does not publish an unusable download. Bump `package.json` and `package-lock.json` together when starting a new version line.
+Distribution requires an Apple Developer ID Application certificate and notarization credentials. Configure these GitHub Actions secrets before the workflow can publish: `MAC_CSC_LINK` (base64-encoded `.p12`), `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`. Without them, the workflow fails before packaging and does not publish an unusable download. After adding the secrets, rerun the workflow from GitHub Actions or start it manually. Bump `package.json` and `package-lock.json` together when starting a new version line.
 
 ## Book folder
 
