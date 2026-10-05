@@ -83,3 +83,52 @@ test("readable book files, approved edits, and publication exports", async (t) =
     "%PDF",
   );
 });
+
+test("new-book agent instructions describe app-compatible chapter creation", async (t) => {
+  const parent = await fs.mkdtemp(
+    path.join(os.tmpdir(), "assisted-writer-agent-test-"),
+  );
+  t.after(() => fs.rm(parent, { recursive: true, force: true }));
+  const root = await book.createBook(parent, "Agent Ready Book", "Author");
+  const instructions = await fs.readFile(path.join(root, "AGENTS.md"), "utf8");
+  for (const required of [
+    "book.json",
+    "notes/book.md",
+    "notesFile",
+    "assisted-writer-1",
+    "UUID",
+    "chapter-02.notes.md",
+    "The app does **not** discover chapters by scanning",
+    "Create **both** files",
+    "first heading matches its manifest title",
+    "author approves",
+  ]) {
+    assert.ok(instructions.includes(required), `Missing guidance: ${required}`);
+  }
+
+  const manifestFile = path.join(root, "book.json");
+  const manifest = JSON.parse(await fs.readFile(manifestFile, "utf8"));
+  const chapter = {
+    id: crypto.randomUUID(),
+    title: "The Second Door",
+    file: "chapter-02.md",
+    notesFile: "chapter-02.notes.md",
+  };
+  await fs.writeFile(
+    path.join(root, "chapters", chapter.file),
+    "# The Second Door\n\nA new scene.\n",
+  );
+  await fs.writeFile(
+    path.join(root, "chapters", chapter.notesFile),
+    "# Notes for The Second Door\n\nKeep the door locked.\n",
+  );
+  manifest.chapters.push(chapter);
+  await fs.writeFile(manifestFile, JSON.stringify(manifest, null, 2) + "\n");
+  const loaded = await book.readBook(root);
+  assert.deepEqual(
+    loaded.chapters.map((item) => item.title),
+    ["Chapter One", "The Second Door"],
+  );
+  assert.equal(loaded.chapters[1].body, "A new scene.");
+  assert.match(loaded.chapters[1].notes, /Keep the door locked/);
+});

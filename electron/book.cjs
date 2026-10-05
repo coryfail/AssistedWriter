@@ -78,10 +78,11 @@ async function createBook(parent, title, author) {
     `# Notes for ${chapter.title}\n\n`,
   );
   await fs.writeFile(path.join(root, "notes", "book.md"), "# Book Notes\n\n");
-  await fs.writeFile(
-    path.join(root, "AGENTS.md"),
-    `# Working on ${title.trim()}\n\nThe author writes the final manuscript. Help with brainstorming, outlining, critique, continuity, research, and editing. Do not write publishable scenes or prose unless the author explicitly asks for a specific passage. Keep suggestions separate from manuscript text and ask the author to approve each edit.\n\nRead book.json for chapter order. Read notes/book.md and chapter notes for context. Chapter files are Markdown. Keep each chapter's first heading in sync with its title in book.json. Never place notes or editorial reports in manuscript chapter files.\n`,
+  const agentGuide = await fs.readFile(
+    path.join(__dirname, "templates", "book-AGENTS.md"),
+    "utf8",
   );
+  await fs.writeFile(path.join(root, "AGENTS.md"), agentGuide);
   return root;
 }
 

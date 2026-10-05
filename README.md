@@ -39,6 +39,7 @@ book-name/
 ```
 
 You can edit these files outside the app. The app reads the chapter order from `book.json`. Keep each chapter filename and notes filename unique and within `chapters/`.
+The generated `AGENTS.md` documents the manifest schema, chapter and notes paths, Markdown conventions, and the steps an agent must follow to add app-visible chapters.
 
 ## Git for each book
 
