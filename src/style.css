@@ -1,0 +1,1141 @@
+@import "@fontsource/dm-sans/latin-400.css";
+@import "@fontsource/dm-sans/latin-500.css";
+@import "@fontsource/dm-sans/latin-600.css";
+@import "@fontsource/dm-sans/latin-700.css";
+@import "@fontsource/libre-baskerville/latin-400.css";
+@import "@fontsource/libre-baskerville/latin-400-italic.css";
+@import "@fontsource/libre-baskerville/latin-700.css";
+:root {
+  font-family: "DM Sans", sans-serif;
+  color: #292723;
+  background: #f5f1e9;
+  font-synthesis: none;
+}
+* {
+  box-sizing: border-box;
+}
+button,
+input,
+textarea {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.43;
+}
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #ac694e;
+  outline-offset: 2px;
+}
+body {
+  margin: 0;
+}
+.eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: #947e70;
+}
+.app-shell {
+  display: flex;
+  height: 100vh;
+  min-width: 1100px;
+  overflow: hidden;
+}
+.library {
+  width: 270px;
+  flex: none;
+  background: #eee9df;
+  border-right: 1px solid #ddd6c9;
+  display: flex;
+  flex-direction: column;
+  padding-top: 25px;
+}
+.library-head {
+  height: 54px;
+  padding: 0 23px 0 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.book-switch {
+  border: 0;
+  background: transparent;
+  color: #78736a;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 0;
+}
+.brand-mark {
+  font-family: "Libre Baskerville", Georgia, serif;
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.12em;
+  color: #4b2727;
+  position: relative;
+  width: 48px;
+}
+.brand-mark span {
+  font-family: Georgia, serif;
+  position: absolute;
+  font-size: 12px;
+  top: -9px;
+  right: 1px;
+  color: #b56e55;
+}
+.brand-mark.small {
+  font-size: 18px;
+  width: 39px;
+}
+.brand-mark.small span {
+  font-size: 10px;
+  top: -6px;
+}
+.book-identity {
+  padding: 29px 25px 27px;
+  border-bottom: 1px solid #ddd6c9;
+}
+.book-identity h2 {
+  font-family: "Libre Baskerville", Georgia, serif;
+  line-height: 1.25;
+  letter-spacing: -0.04em;
+  font-size: 23px;
+  font-weight: 400;
+  margin: 12px 0 7px;
+  color: #302824;
+}
+.book-identity p {
+  margin: 0;
+  color: #8a8176;
+  font-size: 12px;
+}
+.library-section {
+  padding: 22px 12px 6px;
+}
+.section-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #8b8277;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  font-weight: 700;
+  padding: 0 12px 11px;
+}
+.section-label button {
+  background: transparent;
+  border: 0;
+  color: #8b8277;
+  padding: 1px;
+}
+.chapter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.chapter-row {
+  display: flex;
+  align-items: center;
+  min-height: 39px;
+  border-radius: 7px;
+  color: #6b6259;
+}
+.chapter-row.active {
+  background: #dfd2c2;
+  color: #3a2b26;
+}
+.chapter-row:hover:not(.active) {
+  background: #e8e1d6;
+}
+.chapter-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 11px 7px 11px 12px;
+}
+.chapter-main span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chapter-num {
+  font-size: 10px;
+  color: #a18e7d;
+  letter-spacing: 0.05em;
+}
+.reorder {
+  opacity: 0;
+  display: flex;
+  flex-direction: column;
+  margin-right: 6px;
+}
+.chapter-row:hover .reorder {
+  opacity: 1;
+}
+.reorder button {
+  border: 0;
+  background: transparent;
+  color: #847265;
+  padding: 0;
+  height: 14px;
+}
+.notes-section {
+  padding-top: 27px;
+}
+.reference-link {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  color: #686057;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 11px 13px;
+  border-radius: 7px;
+}
+.reference-link:hover,
+.reference-link.active {
+  background: #dfd2c2;
+  color: #3a2b26;
+}
+.library-bottom {
+  margin-top: auto;
+  border-top: 1px solid #ddd6c9;
+  padding: 16px 25px 22px;
+  color: #9b9185;
+  font-size: 11px;
+}
+.library-bottom button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  padding: 8px 0 15px;
+  color: #71685e;
+  font-size: 12px;
+  font-weight: 600;
+}
+.workspace {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #f6f2ea;
+}
+.topbar {
+  height: 68px;
+  flex: none;
+  border-bottom: 1px solid #e2dcd2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px 0 30px;
+}
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  color: #a29a8f;
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.breadcrumb strong {
+  color: #443a33;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.slash {
+  color: #c6bbae;
+}
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.save-state {
+  color: #8a8075;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.status-dot {
+  width: 6px;
+  height: 6px;
+  background: #7f9c79;
+  border-radius: 50%;
+}
+.status-dot.pending {
+  background: #bb9160;
+}
+.light-button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #d8cfc2;
+  border-radius: 6px;
+  background: #fcfaf6;
+  color: #51483d;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 9px 12px;
+}
+.export-menu {
+  position: relative;
+}
+.export-options {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 5px;
+  width: 180px;
+  padding: 6px;
+  background: #fffdf9;
+  border: 1px solid #ddd2c4;
+  box-shadow: 0 12px 26px #4b3a2b22;
+  z-index: 5;
+  border-radius: 7px;
+}
+.export-menu:hover .export-options,
+.export-menu:focus-within .export-options {
+  display: block;
+}
+.export-options button {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: 4px;
+  padding: 9px 8px;
+  color: #423931;
+  font-size: 12px;
+}
+.export-options button:hover {
+  background: #f2ece3;
+}
+.export-options small {
+  float: right;
+  color: #a69a8b;
+}
+.icon {
+  border: 0;
+  background: transparent;
+  color: #8a8075;
+  padding: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+}
+.icon:hover {
+  background: #eee5d8;
+}
+.editor-toolbar {
+  height: 48px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 0 29px;
+  border-bottom: 1px solid #e4ddd3;
+}
+.tool-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.tool-group button {
+  width: 32px;
+  height: 31px;
+  border: 0;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  color: #665d54;
+  border-radius: 4px;
+}
+.tool-group button:hover,
+.tool-group button.selected {
+  background: #e6d8c9;
+  color: #623b32;
+}
+.tool-separator {
+  height: 19px;
+  border-left: 1px solid #ddd3c6;
+}
+.toolbar-hint {
+  margin-left: auto;
+  color: #b6a99a;
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  font-weight: 700;
+}
+.writing-scroll {
+  overflow: auto;
+  flex: 1;
+  padding: 45px 25px 60px;
+  scrollbar-color: #c8baaa transparent;
+}
+.page {
+  width: min(690px, 100%);
+  min-height: 820px;
+  margin: 0 auto;
+  background: #fffefa;
+  box-shadow:
+    0 3px 16px #5b493617,
+    0 0 1px #6a59462b;
+  padding: 78px 80px 85px;
+}
+.page-kicker {
+  color: #ad7861;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  font-weight: 700;
+}
+.chapter-title {
+  font-family: "Libre Baskerville", Georgia, serif;
+  display: block;
+  border: 0;
+  outline: none !important;
+  background: transparent;
+  color: #2f2b27;
+  letter-spacing: -0.055em;
+  font-size: 39px;
+  line-height: 1.25;
+  margin: 21px 0 23px;
+  padding: 0;
+  width: 100%;
+  font-weight: 400;
+}
+.chapter-rule {
+  width: 31px;
+  border-top: 2px solid #ac6e58;
+  margin-bottom: 43px;
+}
+.prose-editor {
+  font-family: "Libre Baskerville", Georgia, serif;
+  font-size: 14px;
+  line-height: 1.95;
+  color: #35312d;
+  min-height: 500px;
+}
+.prose-editor .tiptap {
+  min-height: 500px;
+  outline: none;
+}
+.prose-editor p {
+  margin: 0 0 0.7em;
+  text-indent: 1.3em;
+}
+.prose-editor p:first-child {
+  text-indent: 0;
+}
+.prose-editor h2,
+.prose-editor h3 {
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.5;
+  margin: 2em 0 1em;
+  text-indent: 0;
+}
+.prose-editor h3 {
+  font-size: 15px;
+  font-weight: 700;
+}
+.prose-editor hr {
+  border: 0;
+  text-align: center;
+  margin: 1.8em 0;
+}
+.prose-editor hr:after {
+  content: "* * *";
+  letter-spacing: 0.28em;
+  color: #8c7a69;
+}
+.prose-editor .is-empty:first-child:before {
+  content: "Begin your chapter here…";
+  color: #b3a79a;
+  float: left;
+  height: 0;
+  pointer-events: none;
+  text-indent: 0;
+}
+.page-end {
+  text-align: center;
+  color: #cbb5a0;
+  font-size: 14px;
+  margin-top: 56px;
+}
+.writing-footer {
+  height: 31px;
+  padding: 0 30px;
+  color: #a39a8e;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid #e4ddd3;
+}
+.notes-workspace {
+  overflow: auto;
+  flex: 1;
+  padding: 55px 30px;
+}
+.notes-page {
+  max-width: 690px;
+  margin: auto;
+  background: #fffefa;
+  min-height: 720px;
+  padding: 72px 74px;
+  box-shadow: 0 3px 16px #5b493617;
+}
+.notes-page h1 {
+  font-family: "Libre Baskerville", Georgia, serif;
+  font-weight: 400;
+  font-size: 38px;
+  letter-spacing: -0.05em;
+  margin: 22px 0 12px;
+}
+.notes-page p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #968b7f;
+  max-width: 430px;
+}
+.notes-page textarea {
+  display: block;
+  width: 100%;
+  min-height: 490px;
+  margin-top: 35px;
+  border: 0;
+  resize: vertical;
+  outline: none !important;
+  background: transparent;
+  color: #3a342d;
+  font-family: "Libre Baskerville", Georgia, serif;
+  font-size: 14px;
+  line-height: 1.9;
+}
+.ai-panel {
+  width: 350px;
+  flex: none;
+  background: #fcfaf6;
+  border-left: 1px solid #e0d8ca;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.ai-panel-head {
+  height: 88px;
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px 14px 22px;
+}
+.ai-heading {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+}
+.ai-spark {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  color: #ab735c;
+  background: #f0e7dc;
+  border-radius: 9px;
+}
+.ai-heading h3 {
+  font-family: "Libre Baskerville", Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.035em;
+  font-size: 17px;
+  margin: 5px 0 0;
+}
+.ai-tabs {
+  height: 46px;
+  flex: none;
+  display: flex;
+  border-top: 1px solid #eee7dc;
+  border-bottom: 1px solid #e7ded2;
+  padding: 0 22px;
+  gap: 22px;
+}
+.ai-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: #9c9083;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0 1px;
+}
+.ai-tabs button.active {
+  border-bottom-color: #a86851;
+  color: #593b31;
+}
+.ai-scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 25px 21px 30px;
+  scrollbar-color: #d4c7b7 transparent;
+}
+.ai-intro {
+  padding: 14px 10px 20px;
+}
+.intro-icon {
+  display: grid;
+  place-items: center;
+  width: 37px;
+  height: 37px;
+  border: 1px solid #d8c8b5;
+  color: #ad745d;
+  border-radius: 9px;
+  margin-bottom: 18px;
+}
+.ai-intro h4,
+.editor-mode-hero h4 {
+  font-family: "Libre Baskerville", Georgia, serif;
+  font-size: 19px;
+  font-weight: 400;
+  letter-spacing: -0.04em;
+  line-height: 1.4;
+  margin: 0 0 9px;
+}
+.ai-intro p,
+.editor-mode-hero p {
+  color: #93877b;
+  font-size: 12px;
+  line-height: 1.65;
+  margin: 0;
+}
+.prompt-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 9px 0 28px;
+}
+.prompt-actions button {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  text-align: left;
+  background: #f7f1e9;
+  color: #906347;
+  border: 1px solid #eee2d5;
+  border-radius: 8px;
+  padding: 13px;
+}
+.prompt-actions button:hover {
+  background: #f1e4d5;
+}
+.prompt-actions span {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.prompt-actions strong {
+  font-size: 11px;
+  color: #493d34;
+}
+.prompt-actions small {
+  font-size: 10px;
+  color: #9b8c7b;
+}
+.ask-box {
+  border-top: 1px solid #ebe3d8;
+  padding: 21px 0;
+}
+.ask-box label {
+  color: #8c7a6d;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+}
+.ask-box textarea {
+  width: 100%;
+  height: 80px;
+  resize: vertical;
+  border: 1px solid #dfd5c7;
+  border-radius: 7px;
+  background: #fffdfa;
+  margin-top: 10px;
+  padding: 12px;
+  font-size: 12px;
+  color: #453a31;
+  line-height: 1.5;
+}
+.ask-box button {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  background: #653d33;
+  border: 0;
+  border-radius: 5px;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 9px 12px;
+  margin-top: 9px;
+}
+.ai-foot {
+  height: 39px;
+  flex: none;
+  border-top: 1px solid #e9e1d6;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 18px;
+  color: #a1978c;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.privacy-dot {
+  width: 6px;
+  height: 6px;
+  background: #8ca381;
+  border-radius: 50%;
+}
+.editor-mode-hero {
+  background: #51332f;
+  color: #fffaf4;
+  padding: 24px;
+  border-radius: 10px;
+}
+.mode-glyph {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid #937065;
+  border-radius: 9px;
+  color: #e7c9ae;
+  margin-bottom: 24px;
+}
+.editor-mode-hero .eyebrow {
+  color: #d3b49e;
+  margin-bottom: 10px;
+}
+.editor-mode-hero h4 {
+  font-size: 21px;
+}
+.editor-mode-hero p {
+  color: #d4c0b2;
+}
+.editor-run {
+  margin-top: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  background: #f7eee1;
+  color: #58382f;
+  border: 0;
+  border-radius: 5px;
+  width: 100%;
+  padding: 12px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.editor-rules {
+  padding: 22px 9px;
+  color: #938477;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  font-size: 11px;
+}
+.editor-rules div {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.editor-rules svg {
+  color: #a9755a;
+}
+.ai-busy {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #7a6659;
+  font-size: 12px;
+  padding: 20px 5px;
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.review-result {
+  border-top: 1px solid #e8dccc;
+  margin-top: 13px;
+  padding-top: 20px;
+}
+.result-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.result-summary {
+  font-family: "Libre Baskerville", Georgia, serif;
+  line-height: 1.55;
+  font-size: 13px;
+  color: #44362f;
+}
+.result-group {
+  margin-top: 26px;
+}
+.result-group h5 {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: #856e5d;
+  text-transform: uppercase;
+  margin: 0 0 12px;
+}
+.result-group h5 span {
+  background: #e9ddd0;
+  border-radius: 10px;
+  padding: 2px 6px;
+}
+.finding,
+.suggestion {
+  border: 1px solid #e8ded2;
+  border-radius: 7px;
+  background: #fffdfa;
+  padding: 13px;
+  margin-bottom: 9px;
+}
+.finding strong {
+  font-size: 12px;
+}
+.finding p,
+.suggestion p {
+  font-size: 11px;
+  line-height: 1.55;
+  color: #87776b;
+}
+.finding blockquote {
+  font-family: Georgia, serif;
+  margin: 9px 0 0;
+  padding-left: 10px;
+  border-left: 2px solid #d1ac92;
+  color: #817367;
+  font-size: 11px;
+}
+.suggestion-label {
+  font-size: 9px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #a06d53;
+}
+.before,
+.after {
+  font-family: Georgia, serif;
+  line-height: 1.5;
+  padding: 9px 10px;
+  margin-top: 10px;
+  border-radius: 3px;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+.before {
+  background: #f8e9e5;
+  color: #703f36;
+  text-decoration: line-through;
+}
+.after {
+  background: #e8efe4;
+  color: #3e5c42;
+}
+.suggestion-actions {
+  display: flex;
+  gap: 14px;
+  margin-top: 13px;
+}
+.suggestion-actions button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: #87796e;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0;
+}
+.suggestion-actions button.apply {
+  color: #5b6d4b;
+}
+.scope-note {
+  color: #a5988a;
+  font-size: 10px;
+  line-height: 1.5;
+  margin-top: 22px;
+}
+.scope-preview {
+  color: #a19486;
+  font-size: 10px;
+  line-height: 1.55;
+  margin: 0 9px 19px;
+}
+.welcome-shell {
+  height: 100vh;
+  background: #f5f0e6;
+  position: relative;
+  overflow: auto;
+  overflow-x: hidden;
+}
+.welcome-shell:before {
+  content: "";
+  position: absolute;
+  right: -150px;
+  top: -130px;
+  width: 670px;
+  height: 670px;
+  border: 1px solid #ded4c5;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 110px #f0e8da77,
+    0 0 0 111px #e2d8c7;
+}
+.welcome-top {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 19px;
+  padding: 45px 7vw;
+}
+.welcome-top > span {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: #8f8072;
+  font-weight: 700;
+}
+.welcome-main {
+  position: relative;
+  margin: 8vh 7vw 80px;
+  max-width: 760px;
+}
+.welcome-main h1 {
+  font-family: "Libre Baskerville", Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.068em;
+  font-size: clamp(52px, 6vw, 86px);
+  line-height: 1.17;
+  margin: 22px 0;
+  color: #342923;
+}
+.welcome-main h1 span {
+  color: #ae765a;
+}
+.welcome-main > p {
+  max-width: 470px;
+  color: #817569;
+  font-size: 15px;
+  line-height: 1.7;
+}
+.welcome-actions {
+  display: flex;
+  gap: 11px;
+  margin-top: 32px;
+}
+.primary,
+.secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 13px 17px;
+}
+.primary {
+  background: #603b32;
+  color: #fff9f2;
+  border: 1px solid #603b32;
+}
+.primary:hover {
+  background: #77483a;
+}
+.secondary {
+  background: #faf7ef;
+  color: #5a483c;
+  border: 1px solid #d8cbbd;
+}
+.secondary:hover {
+  background: #eee6d9;
+}
+.recent {
+  margin-top: 70px;
+  width: 530px;
+  max-width: 100%;
+}
+.recent > .eyebrow {
+  margin-bottom: 13px;
+}
+.recent button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid #ded4c7;
+  text-align: left;
+  padding: 13px 3px;
+  color: #6d5144;
+}
+.recent button span {
+  font-size: 13px;
+  font-weight: 700;
+  color: #4f4238;
+}
+.recent button small {
+  margin-left: auto;
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  color: #a3978a;
+}
+.welcome-quote {
+  position: absolute;
+  bottom: 38px;
+  right: 7vw;
+  color: #a79a8d;
+  font-family: Georgia, serif;
+  font-size: 12px;
+  font-style: italic;
+}
+.welcome-quote span {
+  font-style: normal;
+}
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: #2c241db0;
+  display: grid;
+  place-items: center;
+  z-index: 20;
+}
+.modal {
+  position: relative;
+  background: #fffdf8;
+  width: 410px;
+  border-radius: 10px;
+  box-shadow: 0 25px 70px #120c083d;
+  padding: 38px;
+}
+.modal-close {
+  position: absolute;
+  right: 20px;
+  top: 20px;
+}
+.modal h2 {
+  font-family: "Libre Baskerville", Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.05em;
+  font-size: 27px;
+  margin: 12px 0;
+}
+.modal p {
+  color: #95887d;
+  font-size: 12px;
+  line-height: 1.6;
+  margin-bottom: 26px;
+}
+.modal label {
+  display: block;
+  color: #67594e;
+  font-size: 11px;
+  font-weight: 700;
+  margin: 15px 0;
+}
+.modal input {
+  display: block;
+  width: 100%;
+  border: 1px solid #dcd1c3;
+  background: #fffdfa;
+  border-radius: 5px;
+  padding: 11px 12px;
+  margin-top: 7px;
+  color: #3e342d;
+  font-size: 12px;
+}
+.modal .full {
+  width: 100%;
+  margin-top: 22px;
+}
+.text-button {
+  border: 0;
+  background: transparent;
+  color: #a16b56;
+  font-size: 11px;
+  margin-top: 16px;
+  width: 100%;
+}
+.toast {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 30;
+  background: #3f302b;
+  color: #fff8ee;
+  border-radius: 7px;
+  box-shadow: 0 10px 25px #21191430;
+  padding: 12px 16px;
+  font-size: 12px;
+  max-width: 380px;
+  line-height: 1.4;
+}
+@media (max-width: 1250px) {
+  .library {
+    width: 235px;
+  }
+  .ai-panel {
+    width: 315px;
+  }
+  .page {
+    padding: 65px;
+  }
+  .toolbar-hint {
+    display: none;
+  }
+}

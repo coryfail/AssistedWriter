@@ -1,0 +1,51 @@
+name: Build and publish Mac app
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  mac-release:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Package Apple Silicon app
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run package:mac
+
+      - name: Verify packages
+        run: |
+          hdiutil verify dist/*.dmg
+          unzip -t dist/*-mac.zip > /dev/null
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="main-${GITHUB_SHA:0:12}"
+          gh release create "$tag" dist/*.dmg dist/*-mac.zip \
+            --target "$GITHUB_SHA" \
+            --title "Assisted Writer main ${GITHUB_SHA:0:7}" \
+            --notes "Automated Apple Silicon build from commit $GITHUB_SHA. This development build is unsigned and has not been notarized by Apple." \
+            --prerelease \
+            --latest=false
