@@ -252,6 +252,15 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px 0 30px;
+  -webkit-app-region: drag;
+}
+.topbar button,
+.topbar a,
+.topbar input,
+.topbar select,
+.topbar textarea,
+.topbar .export-options {
+  -webkit-app-region: no-drag;
 }
 .breadcrumb {
   display: flex;
