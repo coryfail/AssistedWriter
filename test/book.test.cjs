@@ -7,6 +7,7 @@ const crypto = require("node:crypto");
 const JSZip = require("jszip");
 const book = require("../electron/book.cjs");
 const { exportBook } = require("../electron/export.cjs");
+const { buildReviewInput } = require("../electron/ai.cjs");
 
 test("readable book files, approved edits, and publication exports", async (t) => {
   const parent = await fs.mkdtemp(
@@ -16,7 +17,7 @@ test("readable book files, approved edits, and publication exports", async (t) =
   const root = await book.createBook(parent, "The Lantern Room", "Test Author");
   const first = (await book.readBook(root)).chapters[0];
   const body =
-    "The lamp *flickered* in the empty room.\n\n---\n\nSomething moved.";
+    "The lamp *flickered* in the empty room. ~~Yesterday.~~\n\n1. First sign\n2. Second sign\n\n> Remember the door.\n\n---\n\nSomething moved.";
   await book.saveChapter(root, first.id, body, "The Opening");
   await book.saveNotes(
     root,
@@ -73,10 +74,13 @@ test("readable book files, approved edits, and publication exports", async (t) =
   const chapter = await epub.file("OEBPS/chapter-2.xhtml").async("string");
   assert.match(opf, /The Lantern Room/);
   assert.match(chapter, /<em>flickered<\/em>/);
+  assert.match(chapter, /<del>Yesterday\.<\/del>/);
+  assert.match(chapter, /1\. First sign/);
   assert.ok(epub.file("OEBPS/nav.xhtml"));
   const docx = await JSZip.loadAsync(await fs.readFile(destinations[0]));
   const wordXml = await docx.file("word/document.xml").async("string");
   assert.match(wordXml, /A shadow moved/);
+  assert.match(wordXml, /<w:strike\b/);
   assert.doesNotMatch(wordXml, /The lamp is an omen|The house is old/);
   assert.equal(
     (await fs.readFile(destinations[2])).subarray(0, 4).toString(),
@@ -91,6 +95,32 @@ test("readable book files, approved edits, and publication exports", async (t) =
     book.deleteChapter(root, first.id),
     /at least one chapter/,
   );
+});
+
+test("AI context and story trackers stay readable and respect request scope", async (t) => {
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), "assisted-writer-context-"));
+  t.after(() => fs.rm(parent, { recursive: true, force: true }));
+  const root = await book.createBook(parent, "Continuity Book", "Author");
+  const first = (await book.readBook(root)).chapters[0];
+  await book.saveReference(root, "book-context", null, "# Voice\n\nQuiet, close third.\n");
+  await book.saveReference(root, "chapter-context", first.id, "# Scene\n\nAt dawn.\n");
+  await book.saveReference(root, "characters", null, "# Characters\n\nMara is 31.\n");
+  await book.saveReference(root, "timeline", null, "# Timeline\n\nJune 4: arrival.\n");
+  const loaded = await book.readBook(root);
+  assert.match(loaded.aiContext, /Quiet, close third/);
+  assert.match(loaded.chapters[0].context, /At dawn/);
+  assert.match(loaded.references.characters, /Mara is 31/);
+  const full = buildReviewInput(loaded, { chapterId: first.id, action: "continuity" }, "instructions");
+  assert.match(full.input, /Mara is 31/);
+  assert.match(full.input, /At dawn/);
+  const limited = buildReviewInput(loaded, { chapterId: first.id, action: "continuity",
+    context: { bookNotes: false, chapterNotes: false, bookContext: false,
+      chapterContext: false, trackers: false, otherChapters: false } }, "instructions");
+  assert.doesNotMatch(limited.input, /Mara is 31|At dawn|Quiet, close third|Book notes:|Chapter notes:/);
+  assert.match(limited.input, /Current chapter Markdown body:/);
+  await assert.rejects(book.saveReference(root, "../outside", null, "bad"), /Unknown reference type/);
+  await fs.rm(path.join(root, "notes", "locations.md"));
+  assert.equal((await book.readBook(root)).references.locations, "");
 });
 
 test("new-book agent instructions describe app-compatible chapter creation", async (t) => {

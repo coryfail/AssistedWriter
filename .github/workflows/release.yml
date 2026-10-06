@@ -10,7 +10,25 @@ permissions:
   contents: write
 
 jobs:
+  updater-flow:
+    strategy:
+      matrix:
+        runner: [macos-26, macos-26-intel]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Test updater flow on this Mac architecture
+        run: |
+          uname -m
+          npm test
+
   mac-release:
+    needs: updater-flow
     runs-on: macos-26
     timeout-minutes: 90
     steps:

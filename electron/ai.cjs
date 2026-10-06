@@ -9,7 +9,7 @@ const actions = {
   chapter:
     "Review this fiction chapter for pacing, character motivation, clarity, repetition, and reader engagement. Cite exact short passages when useful.",
   continuity:
-    "Check continuity against the book notes and available chapters: names, chronology, character knowledge, setting facts, and unresolved contradictions. Do not invent facts.",
+    "Check continuity for names, dates, ages, locations, terminology, and plot facts against the provided reference files and available chapters. Report specific warnings with evidence. Do not invent facts or treat uncertainty as a contradiction.",
   editor:
     "Act as a final-pass fiction editor. Suggest only precise copyedits, proofreading fixes, and clear consistency corrections. Preserve the author’s voice. Do not add new narrative content. Every proposed edit must quote text exactly as it appears in the Markdown chapter body and include a replacement.",
 };
@@ -46,9 +46,57 @@ const outputSchema = {
         required: ["category", "quote", "replacement", "reason"],
       },
     },
+    warnings: {
+      type: "array",
+      items: {
+        type: "object", additionalProperties: false,
+        properties: {
+          category: { type: "string", enum: ["name", "date", "age", "location", "term", "plot"] },
+          detail: { type: "string" },
+          evidence: { type: "string" },
+        },
+        required: ["category", "detail", "evidence"],
+      },
+    },
   },
-  required: ["summary", "findings", "suggestions"],
+  required: ["summary", "findings", "suggestions", "warnings"],
 };
+
+function buildReviewInput(book, options, instructions) {
+  const chapter = book.chapters.find((c) => c.id === options.chapterId);
+  if (!chapter) throw new Error("Choose a chapter first.");
+  const scope = options.context || {};
+  const include = (key) => scope[key] !== false;
+  const otherChapters = options.action === "continuity" && include("otherChapters")
+    ? book.chapters.filter((c) => c.id !== chapter.id)
+        .map((c) => `## ${c.title}\n${c.body.slice(0, 12000)}`)
+        .join("\n\n").slice(0, 60000) : "";
+  const trackers = options.action === "continuity" && include("trackers")
+    ? Object.entries(book.references || {}).map(([name, value]) =>
+        `${name} tracker:\n${value.slice(0, 12000)}`).join("\n\n") : "";
+  const parts = [
+    `Task: ${actions[options.action]}`,
+    `Author question: ${String(options.question || "").slice(0, 2000) || "(none)"}`,
+    `Book: ${book.manifest.title} by ${book.manifest.author || "unlisted author"}`,
+    `Book writing guidance:\n${instructions.slice(0, 8000)}`,
+    include("bookNotes") ? `Book notes:\n${book.bookNotes.slice(0, 18000)}` : "",
+    include("bookContext") ? `Book AI context:\n${book.aiContext.slice(0, 12000)}` : "",
+    `Chapter: ${chapter.title}`,
+    include("chapterNotes") ? `Chapter notes:\n${chapter.notes.slice(0, 12000)}` : "",
+    include("chapterContext") ? `Chapter AI context:\n${chapter.context.slice(0, 12000)}` : "",
+    `Selected text:\n${String(options.selection || "").slice(0, 12000) || "(none)"}`,
+    `Current chapter Markdown body:\n${chapter.body.slice(0, 50000)}`,
+    trackers,
+    otherChapters ? `Other chapters for continuity:\n${otherChapters}` : "",
+  ];
+  return {
+    input: parts.filter(Boolean).join("\n\n---\n\n"),
+    sent: { chapter: chapter.title, bookNotes: include("bookNotes"), chapterNotes: include("chapterNotes"),
+      bookContext: include("bookContext"), chapterContext: include("chapterContext"),
+      trackers: Boolean(trackers), otherChapters: Boolean(otherChapters),
+      selection: Boolean(options.selection) },
+  };
+}
 
 async function review(root, options, apiKey) {
   const book = await readBook(root);
@@ -56,34 +104,10 @@ async function review(root, options, apiKey) {
   if (!chapter) throw new Error("Choose a chapter first.");
   const action = actions[options.action];
   if (!action) throw new Error("Unknown AI action.");
-  const selection = String(options.selection || "").slice(0, 12000);
-  const question = String(options.question || "").slice(0, 2000);
-  const chapterText = chapter.body.slice(0, 50000);
-  const otherChapters =
-    options.action === "continuity"
-      ? book.chapters
-          .filter((c) => c.id !== chapter.id)
-          .map((c) => `## ${c.title}\n${c.body.slice(0, 12000)}`)
-          .join("\n\n")
-          .slice(0, 60000)
-      : "";
   const instructions = await fs
     .readFile(path.join(root, "AGENTS.md"), "utf8")
     .catch(() => "");
-  const input = [
-    `Task: ${action}`,
-    `Author question: ${question || "(none)"}`,
-    `Book: ${book.manifest.title} by ${book.manifest.author || "unlisted author"}`,
-    `Book writing guidance:\n${instructions.slice(0, 8000)}`,
-    `Book notes:\n${book.bookNotes.slice(0, 18000)}`,
-    `Chapter: ${chapter.title}`,
-    `Chapter notes:\n${chapter.notes.slice(0, 12000)}`,
-    `Selected text:\n${selection || "(none)"}`,
-    `Current chapter Markdown body:\n${chapterText}`,
-    otherChapters ? `Other chapters for continuity:\n${otherChapters}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n\n---\n\n");
+  const { input, sent } = buildReviewInput(book, options, instructions);
   const client = new OpenAI({ apiKey });
   const response = await client.responses.create({
     model: "gpt-6-astra",
@@ -114,13 +138,7 @@ async function review(root, options, apiKey) {
   result.sourceHash = sourceHash;
   result.chapterId = chapter.id;
   result.action = options.action;
-  result.sent = {
-    chapter: chapter.title,
-    bookNotes: true,
-    chapterNotes: true,
-    otherChapters: Boolean(otherChapters),
-    selection: Boolean(selection),
-  };
+  result.sent = sent;
   const reportFile = path.join(
     root,
     "editorial",
@@ -137,4 +155,4 @@ async function review(root, options, apiKey) {
   return result;
 }
 
-module.exports = { review };
+module.exports = { review, buildReviewInput };

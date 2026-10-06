@@ -6,8 +6,9 @@ This folder is an Assisted Writer fiction book. The author writes the final manu
 
 1. Read `book.json` for the book title, author, and **authoritative chapter order**.
 2. Read `notes/book.md` for book-wide context.
-3. For each relevant chapter, read the manuscript and its notes file named by that chapter's `file` and `notesFile` fields in `book.json`.
-4. Follow the author's current request. Keep story suggestions separate from manuscript text until the author approves them.
+3. Read `notes/ai-context.md` and the story trackers in `notes/` when relevant.
+4. For each relevant chapter, read the manuscript and its notes file named by that chapter's `file` and `notesFile` fields in `book.json`. Optional chapter AI context uses the manuscript filename stem plus `.context.md`.
+5. Follow the author's current request. Keep story suggestions separate from manuscript text until the author approves them.
 
 ## Folder layout
 
@@ -18,16 +19,22 @@ book-folder/
   chapters/
     chapter-01.md           Manuscript for the first chapter
     chapter-01.notes.md     App-visible notes for the first chapter
+    chapter-01.context.md   App-visible AI context for the first chapter
     <other chapter>.md      Other manuscripts named in book.json
     <other chapter>.notes.md  Their app-visible notes
   notes/
     book.md                 App-visible notes for the whole book
+    ai-context.md           Book-wide AI context
+    characters.md           Character facts and relationships
+    locations.md            Place and setting facts
+    timeline.md             Chronology and dates
+    terminology.md          Names, terms, and preferred spellings
   editorial/                Saved AI review reports; not manuscript
   exports/                  Generated DOCX, EPUB, and PDF files
   .git/                     Optional Git history, if enabled
 ```
 
-The app does **not** discover chapters by scanning `chapters/`. It loads only the entries in `book.json`, in that order. It also does not display arbitrary extra note files in its notes views. Put book-wide notes in `notes/book.md` and chapter notes in the `notesFile` named by the relevant chapter entry. Additional research files may live in `notes/`, but link to them from `notes/book.md` if the author should find them in the app.
+The app does **not** discover chapters by scanning `chapters/`. It loads only the entries in `book.json`, in that order. Put book-wide notes in `notes/book.md`, chapter notes in the named `notesFile`, and AI context in the dedicated files above. The four tracker files are visible in the app. Additional research files may live in `notes/`, but link to them from `notes/book.md` if the author should find them in the app.
 
 ## `book.json` contract
 
@@ -71,9 +78,11 @@ The scene continues with *italics* and **bold**.
 The next scene begins here.
 ```
 
-The app removes that first heading when loading the editor and writes it back when saving. Do not add another `#` heading inside the body. For reliable editing and export, use ordinary paragraphs, `*italics*`, `**bold**`, `##` or `###` subheadings, and `---` for scene breaks. Avoid relying on tables, embedded HTML, images, or complex Markdown for the manuscript; the app's editor and exports may not preserve them.
+The app removes that first heading when loading the editor and writes it back when saving. Do not add another `#` heading inside the body. For reliable editing and export, use ordinary paragraphs, `*italics*`, `**bold**`, `~~strikethrough~~`, `##` or `###` subheadings, block quotes, bullet or numbered lists, and `---` for scene breaks. Avoid relying on tables, embedded HTML, images, or complex Markdown for the manuscript; the app's editor and exports may not preserve them.
 
 `notes/book.md` and each `chapters/<notesFile>` are separate Markdown documents. They can contain outlines, character facts, chronology, questions, and continuity notes. The chapter notes file may start with `# Notes for <chapter title>`. Notes and editorial reports are excluded from manuscript exports.
+
+`notes/ai-context.md` and `chapters/<manuscript stem>.context.md` hold guidance the author wants the in-app AI to consider. The author can turn either source off for a request. Character, location, timeline, and terminology trackers are Markdown in `notes/`; continuity checks can read them when enabled. For existing books, missing context or tracker files are treated as empty and are created when edited in the app. Keep factual assertions and uncertainties distinct, so a continuity warning can cite evidence rather than guess.
 
 ## Adding or changing chapters
 
@@ -82,7 +91,7 @@ When the author asks you to create a chapter that should appear in Assisted Writ
 1. Read the current `book.json` immediately before editing it.
 2. Choose an unused manuscript filename and an unused notes filename in `chapters/`. Use matching stems such as `chapter-02.md` and `chapter-02.notes.md`; the exact stem is not important.
 3. Generate a new UUID for `id`. Never reuse or change an existing chapter ID.
-4. Create **both** files. Put `# <chapter title>` and a blank line at the top of the manuscript. Create the chapter notes file even if it is empty apart from its heading.
+4. Create **both** files. Put `# <chapter title>` and a blank line at the top of the manuscript. Create the chapter notes file even if it is empty apart from its heading. You may also create `<manuscript stem>.context.md` for chapter AI guidance.
 5. Add an entry with `id`, `title`, `file`, and `notesFile` to `book.json` at the intended position in `chapters`. Preserve all other entries and metadata.
 6. Check that every listed manuscript and notes file exists, filenames and IDs are unique, and each manuscript's first heading matches its manifest title.
 

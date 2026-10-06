@@ -6,7 +6,12 @@ import { Markdown } from "@tiptap/markdown";
 import {
   Bold,
   Italic,
+  Strikethrough,
   Heading2,
+  Heading3,
+  Quote,
+  List,
+  ListOrdered,
   Undo2,
   Redo2,
   Plus,
@@ -56,6 +61,10 @@ function App() {
   const [panelOpen, setPanelOpen] = useState(true);
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
+  const [referenceKind, setReferenceKind] = useState("book-context");
+  const [referenceText, setReferenceText] = useState("");
+  const [aiContext, setAiContext] = useState({ bookNotes: true, chapterNotes: true,
+    bookContext: true, chapterContext: true, trackers: true, otherChapters: true });
   const [question, setQuestion] = useState("");
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -128,8 +137,22 @@ function App() {
   }, []);
   useEffect(() => {
     const unsubscribe = api?.onUpdateStatus?.(setUpdate);
+    api?.updateStatus?.().then(setUpdate).catch(() => {});
     return () => unsubscribe?.();
   }, []);
+  useEffect(() => {
+    const onKey = (event) => {
+      if (!(event.metaKey || event.ctrlKey) || !book) return;
+      const key = event.key.toLowerCase();
+      if (key === "s") { event.preventDefault(); flush().catch((error) => announce(error.message)); }
+      if (key === "1") { event.preventDefault(); chooseChapter(selectedRef.current); }
+      if (key === "2") { event.preventDefault(); chooseBookNotes(); }
+      if (key === "3") { event.preventDefault(); chooseReference("chapter-context"); }
+      if (key === "\\") { event.preventDefault(); setPanelOpen((open) => !open); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [book, section, notes, referenceText, editor]);
   useEffect(
     () => () => {
       clearTimeout(timer.current);
@@ -210,6 +233,8 @@ function App() {
           ),
         }));
     }
+    if (section === "reference") await api.saveReference(rootRef.current,
+      referenceKind, selectedRef.current, referenceText);
     setSaveState("Saved");
   }
 
@@ -271,6 +296,41 @@ function App() {
     } catch (error) {
       announce(error.message);
     }
+  }
+
+  function referenceValue(data, kind, chapterId = selectedRef.current) {
+    if (kind === "book-context") return data.aiContext || "";
+    if (kind === "chapter-context") return data.chapters.find((c) => c.id === chapterId)?.context || "";
+    return data.references?.[kind] || "";
+  }
+
+  async function chooseReference(kind) {
+    try {
+      await flush();
+      const latest = await api.loadBook(rootRef.current);
+      setBook(latest);
+      setReferenceKind(kind);
+      setReferenceText(referenceValue(latest, kind));
+      setSection("reference");
+      setResult(null);
+    } catch (error) { announce(error.message); }
+  }
+
+  function changeReference(value) {
+    setReferenceText(value);
+    setSaveState("Saving…");
+    clearTimeout(notesTimer.current);
+    const root = rootRef.current, kind = referenceKind, id = selectedRef.current;
+    notesTimer.current = setTimeout(async () => {
+      try {
+        await api.saveReference(root, kind, id, value);
+        setBook((prev) => kind === "book-context" ? { ...prev, aiContext: value }
+          : kind === "chapter-context" ? { ...prev, chapters: prev.chapters.map((c) =>
+              c.id === id ? { ...c, context: value } : c) }
+          : { ...prev, references: { ...prev.references, [kind]: value } });
+        setSaveState("Saved");
+      } catch (error) { setSaveState("Save failed"); announce(error.message); }
+    }, 650);
   }
 
   function changeTitle(value) {
@@ -423,6 +483,7 @@ function App() {
         chapterId: selectedId,
         selection,
         question,
+        context: aiContext,
       });
       setResult(response);
       setSidePanel(action === "editor" ? "editor" : "assist");
@@ -613,7 +674,7 @@ function App() {
                   </button>
                 )}
                 {update.status === "downloaded" && (
-                  <button className="primary" onClick={() => api.installUpdate()}>
+                  <button className="primary" onClick={() => api.installUpdate().catch((error) => setUpdate({ status: "error", message: error.message }))}>
                     Restart to update
                   </button>
                 )}
@@ -623,6 +684,8 @@ function App() {
                   </button>
                 )}
               </div>
+              {update.status === "downloading" && <progress className="update-progress" value={update.percent || 0} max="100" aria-label="Update download progress" />}
+              <div className="shortcut-help"><strong>Keyboard shortcuts</strong><span>⌘S Save · ⌘1 Chapter · ⌘2 Book notes · ⌘3 Chapter context · ⌘\\ AI panel</span></div>
               <label>
                 OpenAI API key
                 <input
@@ -756,6 +819,16 @@ function App() {
           >
             <PenLine size={17} /> Chapter notes
           </button>
+          <div className="reference-subtitle">AI CONTEXT</div>
+          {[["book-context", "Book context"], ["chapter-context", "Chapter context"]].map(([kind, label]) => (
+            <button key={kind} className={`reference-link ${section === "reference" && referenceKind === kind ? "active" : ""}`}
+              onClick={() => chooseReference(kind)}><Sparkles size={16} /> {label}</button>
+          ))}
+          <div className="reference-subtitle">STORY TRACKERS</div>
+          {[["characters", "Characters"], ["locations", "Locations"], ["timeline", "Timeline"], ["terminology", "Terminology"]].map(([kind, label]) => (
+            <button key={kind} className={`reference-link ${section === "reference" && referenceKind === kind ? "active" : ""}`}
+              onClick={() => chooseReference(kind)}><BookOpen size={16} /> {label}</button>
+          ))}
         </div>
         <div className="library-bottom">
           <button onClick={() => setModal("settings")}>
@@ -779,7 +852,7 @@ function App() {
             <span>{book.manifest.title}</span>
             <span className="slash">/</span>
             <strong>
-              {section === "book-notes"
+              {section === "reference" ? referenceKind.replace(/-/g, " ").toUpperCase() : section === "book-notes"
                 ? "Book notes"
                 : section === "notes"
                   ? `${current?.title} notes`
@@ -795,6 +868,9 @@ function App() {
               ></span>
               {saveState}
             </span>
+            {(["downloading", "downloaded"].includes(update.status)) && <button className="update-indicator" onClick={() => setModal("settings")}>
+              {update.status === "downloading" ? `Update ${update.percent || 0}%` : "Update ready"}
+            </button>}
             <div className="export-menu">
               <button className="light-button">
                 <FileDown size={16} /> Export <ChevronDown size={14} />
@@ -842,6 +918,8 @@ function App() {
                 >
                   <Italic size={17} />
                 </button>
+                <button title="Strikethrough" aria-label="Strikethrough" className={editor?.isActive("strike") ? "selected" : ""}
+                  onClick={() => editor.chain().focus().toggleStrike().run()}><Strikethrough size={17} /></button>
               </div>
               <div className="tool-separator" />
               <div className="tool-group">
@@ -864,6 +942,14 @@ function App() {
                 >
                   <Asterisk size={17} />
                 </button>
+                <button title="Smaller subheading" aria-label="Smaller subheading" className={editor?.isActive("heading", { level: 3 }) ? "selected" : ""}
+                  onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}><Heading3 size={17} /></button>
+                <button title="Block quote" aria-label="Block quote" className={editor?.isActive("blockquote") ? "selected" : ""}
+                  onClick={() => editor.chain().focus().toggleBlockquote().run()}><Quote size={17} /></button>
+                <button title="Bulleted list" aria-label="Bulleted list" className={editor?.isActive("bulletList") ? "selected" : ""}
+                  onClick={() => editor.chain().focus().toggleBulletList().run()}><List size={17} /></button>
+                <button title="Numbered list" aria-label="Numbered list" className={editor?.isActive("orderedList") ? "selected" : ""}
+                  onClick={() => editor.chain().focus().toggleOrderedList().run()}><ListOrdered size={17} /></button>
               </div>
               <div className="tool-separator" />
               <div className="tool-group">
@@ -910,25 +996,25 @@ function App() {
           <div className="notes-workspace">
             <div className="notes-page">
               <div className="page-kicker">
-                {section === "book-notes"
+                {section === "reference" ? "STORY REFERENCE" : section === "book-notes"
                   ? "BOOK REFERENCE"
                   : "CHAPTER REFERENCE"}
               </div>
               <h1>
-                {section === "book-notes"
+                {section === "reference" ? referenceKind.split("-").map((part) => part[0].toUpperCase() + part.slice(1)).join(" ") : section === "book-notes"
                   ? "Book notes"
                   : `${current?.title} notes`}
               </h1>
               <p>
-                {section === "book-notes"
+                {section === "reference" ? "Readable Markdown shared with Codex. Choose which sources the in-app AI reads in its panel." : section === "book-notes"
                   ? "Characters, world details, ideas, and anything you want the assistant or Codex to remember."
                   : "Plans, questions, continuity details, and reminders for this chapter."}
               </p>
               <textarea
                 spellCheck
-                value={notes}
-                onChange={(event) => changeNotes(event.target.value)}
-                aria-label="Notes in Markdown"
+                value={section === "reference" ? referenceText : notes}
+                onChange={(event) => section === "reference" ? changeReference(event.target.value) : changeNotes(event.target.value)}
+                aria-label="Reference in Markdown"
                 placeholder="Write your notes here in Markdown…"
               />
             </div>
@@ -1260,10 +1346,7 @@ function App() {
                     </span>
                   </button>
                 </div>
-                <p className="scope-preview">
-                  Requests include this chapter, its notes, book notes, and book
-                  instructions. Continuity also includes other chapters.
-                </p>
+                <p className="scope-preview">Choose the sources for the next AI request below.</p>
                 <div className="ask-box">
                   <label>ASK ABOUT YOUR WRITING</label>
                   <textarea
@@ -1315,12 +1398,20 @@ function App() {
                     <Check size={15} /> Reports saved as readable JSON
                   </div>
                 </div>
-                <p className="scope-preview">
-                  The editor reads this chapter, its notes, book notes, and book
-                  instructions when you run a review.
-                </p>
+                <p className="scope-preview">Choose the sources for the next AI request below.</p>
               </>
             )}
+            {sidePanel !== "git" && <div className="ai-context-controls">
+              <strong>AI reads</strong>
+              {[["bookNotes", "Book notes"], ["chapterNotes", "Chapter notes"],
+                ["bookContext", "Book context"], ["chapterContext", "Chapter context"],
+                ["trackers", "Story trackers (continuity)"], ["otherChapters", "Other chapters (continuity)"],
+              ].map(([key, label]) => <label key={key}>
+                <input type="checkbox" checked={aiContext[key]} onChange={(event) =>
+                  setAiContext((prev) => ({ ...prev, [key]: event.target.checked }))} /> {label}
+              </label>)}
+              <small>The current chapter and book instructions are always included.</small>
+            </div>}
             {sidePanel !== "git" && busy && (
               <div className="ai-busy">
                 <LoaderCircle className="spin" size={20} /> Reading your
@@ -1340,6 +1431,14 @@ function App() {
                   </button>
                 </div>
                 <p className="result-summary">{result.summary}</p>
+                {result.warnings?.length > 0 && <div className="result-group">
+                  <h5>Continuity warnings <span>{result.warnings.length}</span></h5>
+                  {result.warnings.map((warning, i) => <div className="finding" key={i}>
+                    <strong>{warning.category.toUpperCase()}</strong>
+                    <p>{warning.detail}</p>
+                    <blockquote>{warning.evidence}</blockquote>
+                  </div>)}
+                </div>}
                 {result.findings?.length > 0 && (
                   <div className="result-group">
                     <h5>Observations</h5>
@@ -1395,7 +1494,12 @@ function App() {
                   </div>
                 )}
                 <div className="scope-note">
-                  Read: {result.sent?.chapter}, book notes, chapter notes
+                  Read: {result.sent?.chapter}
+                  {result.sent?.bookNotes ? ", book notes" : ""}
+                  {result.sent?.chapterNotes ? ", chapter notes" : ""}
+                  {result.sent?.bookContext ? ", book context" : ""}
+                  {result.sent?.chapterContext ? ", chapter context" : ""}
+                  {result.sent?.trackers ? ", story trackers" : ""}
                   {result.sent?.otherChapters ? ", other chapters" : ""}
                   {result.sent?.selection ? ", selected text" : ""}.
                 </div>

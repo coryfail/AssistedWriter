@@ -6,6 +6,7 @@ const {
   safeStorage,
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
+const { createUpdateController } = require("./updater.cjs");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const book = require("./book.cjs");
@@ -15,9 +16,6 @@ const git = require("./git.cjs");
 
 let mainWindow;
 app.setName("Assisted Writer");
-autoUpdater.autoDownload = false;
-autoUpdater.autoInstallOnAppQuit = true;
-autoUpdater.allowPrerelease = true;
 const recentFile = () => path.join(app.getPath("userData"), "recent.json");
 const keyFile = () => path.join(app.getPath("userData"), "api-key.enc");
 
@@ -76,31 +74,13 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
 }
 
-function publishUpdateStatus(status, details = {}) {
-  mainWindow?.webContents.send("update:status", { status, ...details });
-}
-
-autoUpdater.on("checking-for-update", () => publishUpdateStatus("checking"));
-autoUpdater.on("update-available", (info) =>
-  publishUpdateStatus("available", { version: info.version }),
-);
-autoUpdater.on("update-not-available", (info) =>
-  publishUpdateStatus("not-available", { version: info.version }),
-);
-autoUpdater.on("download-progress", (progress) =>
-  publishUpdateStatus("downloading", { percent: Math.round(progress.percent) }),
-);
-autoUpdater.on("update-downloaded", (info) =>
-  publishUpdateStatus("downloaded", { version: info.version }),
-);
-autoUpdater.on("error", (error) =>
-  publishUpdateStatus("error", { message: error.message }),
-);
+const updater = createUpdateController(autoUpdater, (status) =>
+  mainWindow?.webContents.send("update:status", status));
 
 app.whenReady().then(() => {
   createWindow();
   if (app.isPackaged) {
-    setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 2500);
+    setTimeout(() => updater.check().catch(() => {}), 2500);
   }
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -155,6 +135,9 @@ ipcMain.handle("chapter:delete", (_event, root, id) =>
 ipcMain.handle("notes:save", (_event, root, id, content) =>
   book.saveNotes(root, id, content),
 );
+ipcMain.handle("reference:save", (_event, root, kind, chapterId, content) =>
+  book.saveReference(root, kind, chapterId, content),
+);
 ipcMain.handle("book:metadata", (_event, root, values) =>
   book.saveMetadata(root, values),
 );
@@ -175,17 +158,16 @@ ipcMain.handle("settings:set-key", async (_event, value) => {
 });
 ipcMain.handle("update:check", async () => {
   if (!app.isPackaged) return { status: "unavailable" };
-  await autoUpdater.checkForUpdates();
-  return { status: "checking" };
+  return updater.check();
 });
+ipcMain.handle("update:status", () => updater.status());
 ipcMain.handle("update:download", async () => {
   if (!app.isPackaged) return { status: "unavailable" };
-  await autoUpdater.downloadUpdate();
-  return { status: "downloading" };
+  return updater.download();
 });
 ipcMain.handle("update:install", () => {
-  if (app.isPackaged) autoUpdater.quitAndInstall();
-  return { status: "installing" };
+  if (!app.isPackaged) return { status: "unavailable" };
+  return updater.install();
 });
 ipcMain.handle("ai:review", async (_event, root, options) => {
   const key = await getKey();

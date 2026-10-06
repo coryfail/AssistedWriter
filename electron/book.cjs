@@ -14,6 +14,16 @@ const chapterPath = (root, chapter) =>
   path.join(root, "chapters", chapter.file);
 const notePath = (root, chapter) =>
   path.join(root, "chapters", chapter.notesFile);
+const referenceNames = ["characters", "locations", "timeline", "terminology"];
+const referencePath = (root, name) =>
+  path.join(root, "notes", `${name}.md`);
+const contextPath = (root) => path.join(root, "notes", "ai-context.md");
+const chapterContextPath = (root, chapter) =>
+  path.join(root, "chapters", `${chapter.file.slice(0, -3)}.context.md`);
+const readOptional = async (file) => {
+  try { return await fs.readFile(file, "utf8"); }
+  catch (error) { if (error.code === "ENOENT") return ""; throw error; }
+};
 const heading = (title, body) => `# ${title}\n\n${body.trim()}\n`;
 const withoutHeading = (content) =>
   content.replace(/^# [^\n]*\n(?:\n)?/, "").trim();
@@ -78,6 +88,10 @@ async function createBook(parent, title, author) {
     `# Notes for ${chapter.title}\n\n`,
   );
   await fs.writeFile(path.join(root, "notes", "book.md"), "# Book Notes\n\n");
+  await fs.writeFile(contextPath(root), "# AI Context for This Book\n\n");
+  for (const name of referenceNames)
+    await fs.writeFile(referencePath(root, name), `# ${name[0].toUpperCase()}${name.slice(1)}\n\n`);
+  await fs.writeFile(chapterContextPath(root, chapter), "# AI Context for Chapter One\n\n");
   const agentGuide = await fs.readFile(
     path.join(__dirname, "templates", "book-AGENTS.md"),
     "utf8",
@@ -93,6 +107,7 @@ async function readBook(root) {
       ...c,
       body: withoutHeading(await fs.readFile(chapterPath(root, c), "utf8")),
       notes: await fs.readFile(notePath(root, c), "utf8"),
+      context: await readOptional(chapterContextPath(root, c)),
     })),
   );
   return {
@@ -100,6 +115,9 @@ async function readBook(root) {
     manifest,
     chapters,
     bookNotes: await fs.readFile(path.join(root, "notes", "book.md"), "utf8"),
+    aiContext: await readOptional(contextPath(root)),
+    references: Object.fromEntries(await Promise.all(referenceNames.map(async (name) =>
+      [name, await readOptional(referencePath(root, name))]))),
   };
 }
 
@@ -117,6 +135,7 @@ async function addChapter(root) {
   manifest.chapters.push(chapter);
   await fs.writeFile(chapterPath(root, chapter), heading(title, ""));
   await fs.writeFile(notePath(root, chapter), `# Notes for ${title}\n\n`);
+  await fs.writeFile(chapterContextPath(root, chapter), `# AI Context for ${title}\n\n`);
   await writeJson(manifestPath(root), manifest);
   return readBook(root);
 }
@@ -166,6 +185,7 @@ async function deleteChapter(root, id) {
   const [chapter] = manifest.chapters.splice(index, 1);
   await fs.unlink(chapterPath(root, chapter));
   await fs.unlink(notePath(root, chapter));
+  await fs.rm(chapterContextPath(root, chapter), { force: true });
   await writeJson(manifestPath(root), manifest);
   return readBook(root);
 }
@@ -176,6 +196,20 @@ async function saveMetadata(root, values) {
   manifest.author = String(values.author || "").trim();
   await writeJson(manifestPath(root), manifest);
   return readBook(root);
+}
+
+async function saveReference(root, kind, chapterId, content) {
+  if (typeof content !== "string") throw new Error("Invalid reference content.");
+  await loadManifest(root);
+  if (kind === "book-context") return atomicWrite(contextPath(root), content);
+  if (referenceNames.includes(kind)) return atomicWrite(referencePath(root, kind), content);
+  if (kind === "chapter-context") {
+    const manifest = await loadManifest(root);
+    const chapter = manifest.chapters.find((item) => item.id === chapterId);
+    if (!chapter) throw new Error("Chapter not found.");
+    return atomicWrite(chapterContextPath(root, chapter), content);
+  }
+  throw new Error("Unknown reference type.");
 }
 
 async function approveSuggestion(
@@ -223,6 +257,7 @@ module.exports = {
   reorderChapter,
   deleteChapter,
   saveMetadata,
+  saveReference,
   approveSuggestion,
   loadManifest,
   withoutHeading,

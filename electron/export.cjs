@@ -27,6 +27,8 @@ function inlineRuns(tokens, marks = {}) {
       runs.push(...inlineRuns(token.tokens, { ...marks, bold: true }));
     else if (token.type === "em")
       runs.push(...inlineRuns(token.tokens, { ...marks, italics: true }));
+    else if (token.type === "del")
+      runs.push(...inlineRuns(token.tokens, { ...marks, strike: true }));
     else if (token.type === "link")
       runs.push(...inlineRuns(token.tokens, marks));
     else if (token.type === "br") runs.push({ text: "\n", ...marks });
@@ -51,13 +53,13 @@ function blockList(tokens) {
     else if (token.type === "hr") output.push({ type: "scene" });
     else if (token.type === "space") continue;
     else if (token.type === "blockquote")
-      output.push(...blockList(token.tokens || []));
+      output.push(...blockList(token.tokens || []).map((block) => ({ ...block, quote: true })));
     else if (token.type === "list")
-      for (const item of token.items || [])
+      for (const [index, item] of (token.items || []).entries())
         output.push({
           type: "paragraph",
           runs: [
-            { text: "• " },
+            { text: token.ordered ? `${Number(token.start || 1) + index}. ` : "• " },
             ...inlineRuns(
               item.tokens?.[0]?.tokens || [{ type: "text", text: item.text }],
             ),
@@ -131,9 +133,9 @@ async function exportDocx(book, chapters, destination) {
           new Paragraph({
             children: block.runs.map(
               (r) =>
-                new TextRun({ text: r.text, bold: r.bold, italics: r.italics }),
+                new TextRun({ text: r.text, bold: r.bold, italics: r.italics, strike: r.strike }),
             ),
-            indent: { firstLine: 280 },
+            indent: { firstLine: block.quote ? 0 : 280, left: block.quote ? 450 : 0 },
             spacing: { line: 300, after: 0 },
           }),
         );
@@ -153,6 +155,7 @@ function renderInline(runs) {
       let value = escapeXml(run.text).replace(/\n/g, "<br />");
       if (run.italics) value = `<em>${value}</em>`;
       if (run.bold) value = `<strong>${value}</strong>`;
+      if (run.strike) value = `<del>${value}</del>`;
       return value;
     })
     .join("");
@@ -167,7 +170,7 @@ async function exportEpub(book, chapters, destination) {
     '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>',
   );
   const css =
-    "body{font-family:serif;line-height:1.45}h1{text-align:center;margin:2em 0 1.5em}h2{margin:2em 0 1em}p{text-indent:1.2em;margin:0}.scene{text-align:center;text-indent:0;margin:1.4em 0}";
+    "body{font-family:serif;line-height:1.45}h1{text-align:center;margin:2em 0 1.5em}h2{text-align:left;margin:2em 0 1em}p{text-indent:1.2em;margin:0}.quote{margin:1em 2em;text-indent:0}.scene{text-align:center;text-indent:0;margin:1.4em 0}";
   zip.file("OEBPS/style.css", css);
   const nav = chapters
     .map(
@@ -196,7 +199,7 @@ async function exportEpub(book, chapters, destination) {
           ? '<p class="scene">* * *</p>'
           : block.type === "heading"
             ? `<h2>${escapeXml(block.text)}</h2>`
-            : `<p>${renderInline(block.runs)}</p>`,
+            : `<p${block.quote ? ' class="quote"' : ""}>${renderInline(block.runs)}</p>`,
       )
       .join("\n");
     zip.file(
@@ -280,6 +283,7 @@ async function exportPdf(book, chapters, destination) {
         doc.font(font).text((i === 0 ? "    " : "") + run.text, {
           continued: i < runs.length - 1,
           lineGap: 2,
+          strike: run.strike,
         });
       });
     }

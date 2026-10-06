@@ -36,8 +36,14 @@ book-name/
   chapters/
     chapter-01.md           Manuscript, with a heading and Markdown body
     chapter-01.notes.md     Chapter notes, excluded from exports
+    chapter-01.context.md   Chapter-specific AI context
   notes/
     book.md                 Whole-book notes, excluded from exports
+    ai-context.md           Book-wide AI context
+    characters.md           Character tracker
+    locations.md            Location tracker
+    timeline.md             Timeline tracker
+    terminology.md          Terminology tracker
   editorial/                Readable AI review reports
   exports/                  Suggested location for export files
 ```
@@ -53,9 +59,11 @@ The app saves pending writing before Git actions. Branch switching and pulling r
 
 ## Writing and AI
 
-The editor supports bold, italics, subheadings, scene breaks, and undo/redo. Changes save automatically. The assistant can review a chapter, check continuity, answer questions, and run a final editor pass. An OpenAI API key is entered in Settings; the encrypted value is kept in the app's data directory using Electron's macOS Keychain-backed safe storage. The key is never stored in a book folder.
+The editor supports bold, italics, strikethrough, two subheading sizes, block quotes, lists, scene breaks, and undo/redo. Changes save automatically. Settings lists keyboard shortcuts for saving, switching to the chapter or book notes, opening chapter context, and toggling the AI panel. The assistant can review a chapter, check continuity, answer questions, and run a final editor pass. An OpenAI API key is entered in Settings; the encrypted value is kept in the app's data directory using Electron's macOS Keychain-backed safe storage. The key is never stored in a book folder.
 
-AI requests are made only when you ask. The current chapter, chapter notes, book notes, and `AGENTS.md` are included. Continuity checks also include other chapters. Review reports are written to `editorial/` as JSON. Suggestions do not change the manuscript until you approve each one. Approval requires an exact unique text match against the same chapter version that was reviewed.
+AI requests are made only when you ask. The current chapter and `AGENTS.md` are included. Controls in the AI panel choose whether the request also reads book notes, chapter notes, book context, chapter context, story trackers, and other chapters. Trackers and other chapters are used for continuity checks. Continuity reports include evidence-backed warnings for names, dates, ages, locations, terms, and plot details. Review reports are written to `editorial/` as JSON. Suggestions do not change the manuscript until you approve each one. Approval requires an exact unique text match against the same chapter version that was reviewed.
+
+App updates show download progress in Settings and the writing toolbar. When the download completes, Settings offers **Restart to update**. The release workflow runs updater state-flow tests on Apple Silicon and Intel GitHub macOS runners, then verifies that the signed package contains both CPU architectures.
 
 ## Exports
 
@@ -63,7 +71,7 @@ AI requests are made only when you ask. The current chapter, chapter notes, book
 - **EPUB** for a reflowable Kindle ebook interior.
 - **PDF** for a 6 × 9 inch print interior draft.
 
-Notes and editorial reports are never included. The export system preserves chapter order, headings, scene breaks, bold, and italics. Covers and KDP metadata are separate. Preview ebook output in Kindle Previewer and print output in KDP's print preview before publishing; the app does not upload books to KDP.
+Notes and editorial reports are never included. The export system preserves chapter order, headings, scene breaks, bold, italics, strikethrough, block quotes, and list text. Covers and KDP metadata are separate. Preview ebook output in Kindle Previewer and print output in KDP's print preview before publishing; the app does not upload books to KDP.
 
 ## Verify
 
