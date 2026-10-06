@@ -60,8 +60,14 @@ jobs:
           security set-keychain-settings -lut 21600 "$keychain"
           security list-keychains -d user -s "$keychain"
           security import "$certificate" -k "$keychain" -P "$MAC_CSC_KEY_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild
+          # The exported bundle contains two certificates with the same name.
+          # Keep the 2026 Developer ID identity so codesign has one match.
+          security delete-certificate -Z 6C6F1294F4B46C5406FA2630399507974969B1FE "$keychain"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain"
-          security find-identity -v -p codesigning "$keychain" | grep 'Developer ID Application'
+          identities="$(security find-identity -v -p codesigning "$keychain")"
+          echo "$identities"
+          [[ "$(grep -c 'Developer ID Application' <<< "$identities")" -eq 1 ]]
+          grep -q '7059DC84A57FAD07AA7721BBAE6C47749AE89637' <<< "$identities"
           rm "$certificate"
           echo "CSC_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
 
