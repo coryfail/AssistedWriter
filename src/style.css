@@ -403,6 +403,13 @@ body {
   flex: 1;
   padding: 45px 25px 60px;
   scrollbar-color: #c8baaa transparent;
+  cursor: grab;
+  overscroll-behavior: contain;
+}
+.writing-scroll.is-panning,
+.notes-workspace.is-panning {
+  cursor: grabbing;
+  user-select: none;
 }
 .page {
   width: min(690px, 100%);
@@ -508,6 +515,8 @@ body {
   overflow: auto;
   flex: 1;
   padding: 55px 30px;
+  cursor: grab;
+  overscroll-behavior: contain;
 }
 .notes-page {
   max-width: 690px;
