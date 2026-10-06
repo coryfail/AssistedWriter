@@ -148,6 +148,33 @@ async function diff(inputRoot, filePath) {
   );
 }
 
+async function selectedDiffs(inputRoot, selectedPaths) {
+  const root = await rootForBook(inputRoot);
+  const state = await status(root);
+  if (!state.initialized) throw new Error("Set up Git for this book first.");
+  if (!Array.isArray(selectedPaths) || !selectedPaths.length)
+    throw new Error("Select at least one changed file.");
+  const allowed = new Set(state.files.map((file) => file.path));
+  if (selectedPaths.some((file) => !allowed.has(file)))
+    throw new Error("Changed files have changed. Refresh Git status.");
+  const limit = 40000;
+  let remaining = limit;
+  let truncated = false;
+  const sections = [];
+  for (const file of selectedPaths) {
+    const patch = await diff(root, file);
+    const entry = `File: ${file}\n${patch || "No text diff available."}\n`;
+    if (entry.length > remaining) {
+      sections.push(entry.slice(0, remaining));
+      truncated = true;
+      break;
+    }
+    sections.push(entry);
+    remaining -= entry.length;
+  }
+  return { text: sections.join("\n"), truncated, files: [...selectedPaths] };
+}
+
 async function commit(inputRoot, message, selectedPaths) {
   const root = await rootForBook(inputRoot);
   const state = await status(root);
@@ -244,6 +271,7 @@ module.exports = {
   status,
   initialize,
   diff,
+  selectedDiffs,
   commit,
   switchBranch,
   createBranch,

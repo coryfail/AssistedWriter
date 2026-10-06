@@ -23,6 +23,11 @@ test("book Git workflow commits selected files and syncs branches", async (t) =>
   assert.equal(initial.branch, "main");
   assert.ok(initial.files.some((file) => file.path === "book.json"));
   assert.match(await git.diff(root, "book.json"), /Git Story/);
+  const draftScope = await git.selectedDiffs(root, ["book.json"]);
+  assert.match(draftScope.text, /Git Story/);
+  assert.doesNotMatch(draftScope.text, /File: notes\/book\.md/);
+  assert.deepEqual(draftScope.files, ["book.json"]);
+  await assert.rejects(git.selectedDiffs(root, ["missing.md"]), /Refresh Git status/);
   const selected = initial.files
     .filter((file) => file.path !== "notes/book.md")
     .map((file) => file.path);
@@ -43,6 +48,9 @@ test("book Git workflow commits selected files and syncs branches", async (t) =>
     await git.diff(root, `chapters/${chapter.file}`),
     /A changed scene/,
   );
+  const selectedDraft = await git.selectedDiffs(root, [`chapters/${chapter.file}`]);
+  assert.match(selectedDraft.text, /A changed scene/);
+  assert.doesNotMatch(selectedDraft.text, /File: notes\/book\.md/);
   await git.commit(root, "Revise opening", [`chapters/${chapter.file}`]);
   await git.switchBranch(root, "main");
   assert.equal((await book.readBook(root)).chapters[0].body, "");

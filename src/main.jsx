@@ -78,6 +78,7 @@ function App() {
   const [update, setUpdate] = useState({ status: "idle" });
   const [gitState, setGitState] = useState(null);
   const [gitBusy, setGitBusy] = useState(false);
+  const [gitMessageBusy, setGitMessageBusy] = useState(false);
   const [gitMessage, setGitMessage] = useState("");
   const [gitBranchName, setGitBranchName] = useState("");
   const [gitRemoteUrl, setGitRemoteUrl] = useState("");
@@ -203,6 +204,22 @@ function App() {
     } catch (error) {
       announce(error.message);
     }
+  }
+
+  async function draftCommitMessage() {
+    if (gitBusy || !gitSelected.length) return;
+    if (!hasKey) { setModal("settings"); return; }
+    setGitBusy(true);
+    setGitMessageBusy(true);
+    try {
+      await flush();
+      const draft = await api.generateCommitMessage(book.root, gitSelected);
+      setGitMessage(draft.message);
+      announce(draft.truncated
+        ? "AI draft ready. Large diffs were shortened; review the message before committing."
+        : "AI draft ready. Review it before committing.");
+    } catch (error) { announce(error.message); }
+    finally { setGitBusy(false); setGitMessageBusy(false); }
   }
 
   function announce(message) {
@@ -1173,6 +1190,7 @@ function App() {
                             <input
                               type="checkbox"
                               aria-label={`Include ${file.path} in commit`}
+                              disabled={gitBusy}
                               checked={gitSelected.includes(file.path)}
                               onChange={(event) =>
                                 setGitSelected((prev) =>
@@ -1216,6 +1234,12 @@ function App() {
                       value={gitMessage}
                       onChange={(event) => setGitMessage(event.target.value)}
                     />
+                    <button className="git-generate" disabled={gitBusy || !gitSelected.length}
+                      onClick={draftCommitMessage}>
+                      {gitMessageBusy ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}
+                      {gitMessageBusy ? "Drafting message…" : "Generate commit message with AI"}
+                    </button>
+                    <p className="git-muted">Uses only selected file changes. Review the draft before committing.</p>
                     <button
                       className="git-commit"
                       disabled={

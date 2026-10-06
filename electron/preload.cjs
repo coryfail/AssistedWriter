@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld("writer", {
     return () => ipcRenderer.removeListener("update:status", listener);
   },
   review: (root, options) => invoke("ai:review", root, options),
+  generateCommitMessage: (root, files) => invoke("ai:commit-message", root, files),
   approve: (root, chapterId, quote, replacement, hash) =>
     invoke("ai:approve", root, chapterId, quote, replacement, hash),
   export: (root, format) => invoke("book:export", root, format),

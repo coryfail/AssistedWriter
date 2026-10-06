@@ -10,7 +10,7 @@ const { createUpdateController } = require("./updater.cjs");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const book = require("./book.cjs");
-const { review } = require("./ai.cjs");
+const { review, generateCommitMessage } = require("./ai.cjs");
 const { exportBook } = require("./export.cjs");
 const git = require("./git.cjs");
 
@@ -173,6 +173,11 @@ ipcMain.handle("ai:review", async (_event, root, options) => {
   const key = await getKey();
   if (!key) throw new Error("Add your OpenAI API key in Settings first.");
   return review(root, options, key);
+});
+ipcMain.handle("ai:commit-message", async (_event, root, files) => {
+  const key = await getKey();
+  if (!key) throw new Error("Add your OpenAI API key in Settings first.");
+  return generateCommitMessage(root, files, key);
 });
 ipcMain.handle(
   "ai:approve",

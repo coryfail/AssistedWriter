@@ -53,7 +53,7 @@ The generated `AGENTS.md` documents the manifest schema, chapter and notes paths
 
 ## Git for each book
 
-Open the **Git** tab in the side panel to set up a repository in the current book folder, inspect changed files and diffs, commit selected files, create or switch local branches, and fetch, pull, or push. Existing book repositories also work. New repositories ignore `exports/` and `.DS_Store` by default. Add an `origin` remote in the panel to sync; Git uses the credentials configured on your Mac. Git identity (`user.name` and `user.email`) must be configured to commit.
+Open the **Git** tab in the side panel to set up a repository in the current book folder, inspect changed files and diffs, commit selected files, create or switch local branches, and fetch, pull, or push. Existing book repositories also work. New repositories ignore `exports/` and `.DS_Store` by default. Add an `origin` remote in the panel to sync; Git uses the credentials configured on your Mac. Git identity (`user.name` and `user.email`) must be configured to commit. **Generate commit message with AI** drafts an editable message from the selected file changes using your saved API key; it never creates the commit automatically.
 
 The app saves pending writing before Git actions. Branch switching and pulling require a clean working tree. Pull uses fast-forward only, so diverged branches need to be resolved with Git or Codex outside the app. The panel never auto-commits or auto-pushes.
 
