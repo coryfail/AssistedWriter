@@ -602,7 +602,7 @@ function App() {
                       `Version ${update.version} is ready to install.`}
                     {update.status === "not-available" && "You are up to date."}
                     {update.status === "error" &&
-                      "Could not check for an update right now."}
+                      (update.message || "Could not check for an update right now.")}
                     {!["checking", "available", "downloading", "downloaded", "not-available", "error"].includes(update.status) &&
                       "Updates come from the latest signed GitHub release."}
                   </span>
@@ -619,7 +619,7 @@ function App() {
                 )}
                 {!['available', 'downloading', 'downloaded'].includes(update.status) && (
                   <button className="secondary" onClick={checkForUpdates}>
-                    Check now
+                    {update.status === "error" ? "Try again" : "Check now"}
                   </button>
                 )}
               </div>

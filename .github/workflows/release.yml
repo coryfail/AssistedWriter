@@ -131,6 +131,9 @@ jobs:
             fi
           done
           test -f release/latest-mac.yml
+          # GitHub normalizes spaces in uploaded asset names to periods. Keep
+          # electron-updater's metadata in sync with the names it will fetch.
+          sed -i '' 's/Assisted-Writer/Assisted.Writer/g' release/latest*.yml
           (cd release && shasum -a 256 *.dmg *-mac.zip > SHA256SUMS.txt)
 
       - name: Publish versioned GitHub prerelease
