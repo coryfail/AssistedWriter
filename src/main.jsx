@@ -65,6 +65,7 @@ function App() {
   const [newAuthor, setNewAuthor] = useState("");
   const [keyInput, setKeyInput] = useState("");
   const [hasKey, setHasKey] = useState(false);
+  const [update, setUpdate] = useState({ status: "idle" });
   const [gitState, setGitState] = useState(null);
   const [gitBusy, setGitBusy] = useState(false);
   const [gitMessage, setGitMessage] = useState("");
@@ -123,6 +124,10 @@ function App() {
       ?.keyStatus()
       .then(setHasKey)
       .catch(() => {});
+  }, []);
+  useEffect(() => {
+    const unsubscribe = api?.onUpdateStatus?.(setUpdate);
+    return () => unsubscribe?.();
   }, []);
   useEffect(
     () => () => {
@@ -438,6 +443,22 @@ function App() {
     }
   }
 
+  async function checkForUpdates() {
+    try {
+      await api.checkForUpdates();
+    } catch (error) {
+      setUpdate({ status: "error", message: error.message });
+    }
+  }
+
+  async function downloadUpdate() {
+    try {
+      await api.downloadUpdate();
+    } catch (error) {
+      setUpdate({ status: "error", message: error.message });
+    }
+  }
+
   if (!book)
     return (
       <div className="welcome-shell">
@@ -536,6 +557,40 @@ function App() {
                 Your API key is encrypted with macOS Keychain protection and
                 stays outside the book folder.
               </p>
+              <div className="update-card">
+                <div>
+                  <strong>App updates</strong>
+                  <span>
+                    {update.status === "checking" && "Checking GitHub…"}
+                    {update.status === "available" &&
+                      `Version ${update.version} is ready to download.`}
+                    {update.status === "downloading" &&
+                      `Downloading update… ${update.percent || 0}%`}
+                    {update.status === "downloaded" &&
+                      `Version ${update.version} is ready to install.`}
+                    {update.status === "not-available" && "You are up to date."}
+                    {update.status === "error" &&
+                      "Could not check for an update right now."}
+                    {!["checking", "available", "downloading", "downloaded", "not-available", "error"].includes(update.status) &&
+                      "Updates come from the latest signed GitHub release."}
+                  </span>
+                </div>
+                {update.status === "available" && (
+                  <button className="secondary" onClick={downloadUpdate}>
+                    Download update
+                  </button>
+                )}
+                {update.status === "downloaded" && (
+                  <button className="primary" onClick={() => api.installUpdate()}>
+                    Restart to update
+                  </button>
+                )}
+                {!['available', 'downloading', 'downloaded'].includes(update.status) && (
+                  <button className="secondary" onClick={checkForUpdates}>
+                    Check now
+                  </button>
+                )}
+              </div>
               <label>
                 OpenAI API key
                 <input

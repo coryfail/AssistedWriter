@@ -15,6 +15,14 @@ contextBridge.exposeInMainWorld("writer", {
   saveMetadata: (root, values) => invoke("book:metadata", root, values),
   keyStatus: () => invoke("settings:key-status"),
   setKey: (key) => invoke("settings:set-key", key),
+  checkForUpdates: () => invoke("update:check"),
+  downloadUpdate: () => invoke("update:download"),
+  installUpdate: () => invoke("update:install"),
+  onUpdateStatus: (callback) => {
+    const listener = (_event, status) => callback(status);
+    ipcRenderer.on("update:status", listener);
+    return () => ipcRenderer.removeListener("update:status", listener);
+  },
   review: (root, options) => invoke("ai:review", root, options),
   approve: (root, chapterId, quote, replacement, hash) =>
     invoke("ai:approve", root, chapterId, quote, replacement, hash),

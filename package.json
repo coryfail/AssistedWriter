@@ -17,6 +17,12 @@
     "directories": {
       "output": "release"
     },
+    "publish": {
+      "provider": "github",
+      "owner": "coryfail",
+      "repo": "AssistedWriter",
+      "releaseType": "prerelease"
+    },
     "files": [
       "dist/**/*",
       "assets/fonts/**/*",
@@ -43,6 +49,7 @@
     "@tiptap/react": "^3.0.0",
     "@tiptap/starter-kit": "^3.0.0",
     "docx": "^9.0.0",
+    "electron-updater": "^6.8.9",
     "jszip": "^3.10.0",
     "lucide-react": "^0.400.0",
     "marked": "^16.0.0",

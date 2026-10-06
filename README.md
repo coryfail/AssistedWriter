@@ -19,7 +19,9 @@ npm run package:mac
 
 The renderer build is placed under `dist/`; packaged Mac apps are placed under `release/`. Local builds without a Developer ID certificate and Apple notarization credentials are for development only and may be blocked by macOS.
 
-Each push to `main` runs the Mac release workflow. It turns the source version (currently `0.2.0`) into a unique prerelease such as `v0.2.0-beta.4`, builds one universal app for Intel and Apple Silicon Macs, and publishes a DMG, ZIP, and SHA-256 checksum file. The release is published only after code-signature, Gatekeeper, notarization, architecture, DMG, and ZIP checks pass.
+Each push to `main` runs the Mac release workflow. It turns the source version (currently `0.2.0`) into a unique prerelease such as `v0.2.0-beta.4`, builds one universal app for Intel and Apple Silicon Macs, and publishes a DMG, ZIP, update metadata, and SHA-256 checksum file. The release is published only after code-signature, Gatekeeper, notarization, architecture, DMG, and ZIP checks pass.
+
+Installed apps can check for the latest signed GitHub prerelease from Settings → App updates. Downloading an update replaces only the app bundle. Book folders stay where the author created them, while recent books and the encrypted API key stay in macOS Application Support and Keychain-backed app data.
 
 Distribution requires an Apple Developer ID Application certificate and notarization credentials. Configure these GitHub Actions secrets before the workflow can publish: `MAC_CSC_LINK` (base64-encoded `.p12`), `MAC_CSC_KEY_PASSWORD`, `APPLE_API_KEY_BASE64` (base64-encoded App Store Connect `.p8` file), `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER` (the API key's Issuer ID). Without them, the workflow fails before packaging and does not publish an unusable download. After adding the secrets, rerun the workflow from GitHub Actions or start it manually. Bump `package.json` and `package-lock.json` together when starting a new version line.
 

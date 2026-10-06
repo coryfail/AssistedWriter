@@ -130,6 +130,7 @@ jobs:
               mv "$artifact" "release/$safe_name"
             fi
           done
+          test -f release/latest-mac.yml
           (cd release && shasum -a 256 *.dmg *-mac.zip > SHA256SUMS.txt)
 
       - name: Publish versioned GitHub prerelease
@@ -139,6 +140,7 @@ jobs:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
           gh release create "$RELEASE_TAG" release/*.dmg release/*-mac.zip release/SHA256SUMS.txt \
+            release/latest*.yml \
             --target "$GITHUB_SHA" \
             --title "Assisted Writer $RELEASE_VERSION" \
             --notes "Universal Mac build for Intel and Apple Silicon from commit $GITHUB_SHA. Signed with Developer ID and notarized by Apple." \
