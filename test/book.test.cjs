@@ -82,6 +82,15 @@ test("readable book files, approved edits, and publication exports", async (t) =
     (await fs.readFile(destinations[2])).subarray(0, 4).toString(),
     "%PDF",
   );
+  const afterDelete = await book.deleteChapter(root, next.chapters[1].id);
+  assert.deepEqual(afterDelete.chapters.map((c) => c.title), ["The Opening"]);
+  await assert.rejects(
+    fs.access(path.join(root, "chapters", next.chapters[1].file)),
+  );
+  await assert.rejects(
+    book.deleteChapter(root, first.id),
+    /at least one chapter/,
+  );
 });
 
 test("new-book agent instructions describe app-compatible chapter creation", async (t) => {

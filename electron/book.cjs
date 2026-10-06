@@ -157,6 +157,19 @@ async function reorderChapter(root, id, direction) {
   return readBook(root);
 }
 
+async function deleteChapter(root, id) {
+  const manifest = await loadManifest(root);
+  if (manifest.chapters.length <= 1)
+    throw new Error("A book must contain at least one chapter.");
+  const index = manifest.chapters.findIndex((c) => c.id === id);
+  if (index < 0) throw new Error("Chapter not found.");
+  const [chapter] = manifest.chapters.splice(index, 1);
+  await fs.unlink(chapterPath(root, chapter));
+  await fs.unlink(notePath(root, chapter));
+  await writeJson(manifestPath(root), manifest);
+  return readBook(root);
+}
+
 async function saveMetadata(root, values) {
   const manifest = await loadManifest(root);
   manifest.title = String(values.title || "").trim() || manifest.title;
@@ -208,6 +221,7 @@ module.exports = {
   saveChapter,
   saveNotes,
   reorderChapter,
+  deleteChapter,
   saveMetadata,
   approveSuggestion,
   loadManifest,

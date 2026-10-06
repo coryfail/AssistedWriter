@@ -197,6 +197,10 @@ body {
   padding: 0;
   height: 14px;
 }
+.reorder .chapter-delete {
+  color: #a05b4c;
+  margin-top: 3px;
+}
 .notes-section {
   padding-top: 27px;
 }

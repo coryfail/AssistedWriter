@@ -35,6 +35,7 @@ import {
   RefreshCw,
   Upload,
   Download,
+  Trash2,
 } from "lucide-react";
 import "./style.css";
 
@@ -374,6 +375,37 @@ function App() {
     }
   }
 
+  async function deleteChapter(chapter) {
+    const confirmed = window.confirm(
+      `Delete “${chapter.title}” and its chapter notes? This cannot be undone from Assisted Writer.`,
+    );
+    if (!confirmed) return;
+    try {
+      await flush();
+      const data = await api.deleteChapter(book.root, chapter.id);
+      const next =
+        data.chapters.find((item) => item.id === selectedId) ||
+        data.chapters[Math.max(0, data.chapters.length - 1)];
+      setBook(data);
+      if (selectedId === chapter.id) {
+        selectedRef.current = next.id;
+        titleRef.current = next.title;
+        setSelectedId(next.id);
+        setTitle(next.title);
+        setNotes(next.notes);
+        setSection("write");
+        setResult(null);
+        editor?.commands.setContent(next.body, {
+          contentType: "markdown",
+          emitUpdate: false,
+        });
+      }
+      announce(`Deleted “${chapter.title}”.`);
+    } catch (error) {
+      announce(error.message);
+    }
+  }
+
   async function runReview(action) {
     if (!hasKey) {
       setModal("settings");
@@ -697,6 +729,13 @@ function App() {
                     disabled={i === book.chapters.length - 1}
                   >
                     <ChevronDown size={13} />
+                  </button>
+                  <button
+                    className="chapter-delete"
+                    title="Delete chapter"
+                    onClick={() => deleteChapter(chapter)}
+                  >
+                    <Trash2 size={13} />
                   </button>
                 </span>
               </div>

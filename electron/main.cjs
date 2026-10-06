@@ -149,6 +149,9 @@ ipcMain.handle("chapter:save", (_event, root, id, body, title) =>
 ipcMain.handle("chapter:reorder", (_event, root, id, direction) =>
   book.reorderChapter(root, id, direction),
 );
+ipcMain.handle("chapter:delete", (_event, root, id) =>
+  book.deleteChapter(root, id),
+);
 ipcMain.handle("notes:save", (_event, root, id, content) =>
   book.saveNotes(root, id, content),
 );
