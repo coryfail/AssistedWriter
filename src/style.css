@@ -57,6 +57,7 @@ body {
   display: flex;
   flex-direction: column;
   padding-top: 25px;
+  overflow-y: auto;
 }
 .library-head {
   height: 54px;

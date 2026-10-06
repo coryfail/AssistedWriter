@@ -49,6 +49,7 @@ function blockList(tokens) {
       output.push({
         type: "heading",
         text: textOf(token.tokens) || token.text,
+        level: token.depth,
       });
     else if (token.type === "hr") output.push({ type: "scene" });
     else if (token.type === "space") continue;
@@ -124,7 +125,7 @@ async function exportDocx(book, chapters, destination) {
         paragraphs.push(
           new Paragraph({
             text: block.text,
-            heading: HeadingLevel.HEADING_2,
+            heading: block.level === 3 ? HeadingLevel.HEADING_3 : HeadingLevel.HEADING_2,
             spacing: { before: 300, after: 200 },
           }),
         );
@@ -198,7 +199,7 @@ async function exportEpub(book, chapters, destination) {
         block.type === "scene"
           ? '<p class="scene">* * *</p>'
           : block.type === "heading"
-            ? `<h2>${escapeXml(block.text)}</h2>`
+            ? `<h${block.level === 3 ? 3 : 2}>${escapeXml(block.text)}</h${block.level === 3 ? 3 : 2}>`
             : `<p${block.quote ? ' class="quote"' : ""}>${renderInline(block.runs)}</p>`,
       )
       .join("\n");
@@ -264,7 +265,7 @@ async function exportPdf(book, chapters, destination) {
         doc
           .moveDown()
           .font("BookBold")
-          .fontSize(12)
+          .fontSize(block.level === 3 ? 11 : 12)
           .text(block.text)
           .moveDown(0.5);
         continue;
