@@ -77,61 +77,6 @@ function App() {
   const rootRef = useRef(null);
   const timer = useRef(null);
   const notesTimer = useRef(null);
-  const writingScrollRef = useRef(null);
-  const notesScrollRef = useRef(null);
-  const dragRef = useRef({
-    active: false,
-    pointerId: null,
-    x: 0,
-    y: 0,
-    left: 0,
-    top: 0,
-  });
-
-  function beginPan(event) {
-    if (event.button !== 0) return;
-    const target = event.target;
-    if (
-      target.closest(
-        "button, input, textarea, select, a, [contenteditable=\"true\"]",
-      )
-    ) {
-      return;
-    }
-    const scroller = event.currentTarget;
-    dragRef.current = {
-      active: true,
-      pointerId: event.pointerId,
-      x: event.clientX,
-      y: event.clientY,
-      left: scroller.scrollLeft,
-      top: scroller.scrollTop,
-    };
-    scroller.setPointerCapture(event.pointerId);
-    scroller.classList.add("is-panning");
-  }
-
-  function pan(event) {
-    const drag = dragRef.current;
-    if (!drag.active || drag.pointerId !== event.pointerId) return;
-    const scroller = event.currentTarget;
-    event.preventDefault();
-    scroller.scrollLeft = drag.left - (event.clientX - drag.x);
-    scroller.scrollTop = drag.top - (event.clientY - drag.y);
-  }
-
-  function endPan(event) {
-    const drag = dragRef.current;
-    if (!drag.active || drag.pointerId !== event.pointerId) return;
-    const scroller = event.currentTarget;
-    if (scroller.hasPointerCapture(event.pointerId)) {
-      scroller.releasePointerCapture(event.pointerId);
-    }
-    scroller.classList.remove("is-panning");
-    dragRef.current.active = false;
-    dragRef.current.pointerId = null;
-  }
-
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [2, 3] } }),
@@ -843,15 +788,7 @@ function App() {
               </div>
               <span className="toolbar-hint">A SPACE FOR YOUR WORDS</span>
             </div>
-            <div
-              ref={writingScrollRef}
-              className="writing-scroll"
-              onPointerDown={beginPan}
-              onPointerMove={pan}
-              onPointerUp={endPan}
-              onPointerCancel={endPan}
-              onLostPointerCapture={endPan}
-            >
+            <div className="writing-scroll">
               <div className="page">
                 <div className="page-kicker">
                   CHAPTER{" "}
@@ -876,15 +813,7 @@ function App() {
             </div>
           </>
         ) : (
-          <div
-            ref={notesScrollRef}
-            className="notes-workspace"
-            onPointerDown={beginPan}
-            onPointerMove={pan}
-            onPointerUp={endPan}
-            onPointerCancel={endPan}
-            onLostPointerCapture={endPan}
-          >
+          <div className="notes-workspace">
             <div className="notes-page">
               <div className="page-kicker">
                 {section === "book-notes"
