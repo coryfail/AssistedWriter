@@ -77,7 +77,7 @@ jobs:
           BASE_VERSION: ${{ steps.version.outputs.base }}
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          app="dist/mac-universal/Assisted Writer.app"
+          app="release/mac-universal/Assisted Writer.app"
           verify_app() {
             codesign --verify --deep --strict --verbose=2 "$1"
             spctl --assess --type execute --verbose=4 "$1"
@@ -90,16 +90,16 @@ jobs:
           build_number="$(plutil -extract CFBundleVersion raw -o - "$app/Contents/Info.plist")"
           [[ "$app_version" == "$BASE_VERSION" && "$build_number" == "$GITHUB_RUN_NUMBER" ]]
           [[ "$(node -p 'require("./package.json").version')" == "$RELEASE_VERSION" ]]
-          hdiutil verify dist/*.dmg
-          unzip -t dist/*-mac.zip > /dev/null
+          hdiutil verify release/*.dmg
+          unzip -t release/*-mac.zip > /dev/null
           mount_dir="$(mktemp -d)"
-          hdiutil attach -readonly -nobrowse -mountpoint "$mount_dir" dist/*.dmg
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount_dir" release/*.dmg
           verify_app "$mount_dir/Assisted Writer.app"
           hdiutil detach "$mount_dir"
           zip_dir="$(mktemp -d)"
-          unzip -q dist/*-mac.zip -d "$zip_dir"
+          unzip -q release/*-mac.zip -d "$zip_dir"
           verify_app "$zip_dir/Assisted Writer.app"
-          (cd dist && shasum -a 256 *.dmg *-mac.zip > SHA256SUMS.txt)
+          (cd release && shasum -a 256 *.dmg *-mac.zip > SHA256SUMS.txt)
 
       - name: Publish versioned GitHub prerelease
         env:
@@ -107,7 +107,7 @@ jobs:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
-          gh release create "$RELEASE_TAG" dist/*.dmg dist/*-mac.zip dist/SHA256SUMS.txt \
+          gh release create "$RELEASE_TAG" release/*.dmg release/*-mac.zip release/SHA256SUMS.txt \
             --target "$GITHUB_SHA" \
             --title "Assisted Writer $RELEASE_VERSION" \
             --notes "Universal Mac build for Intel and Apple Silicon from commit $GITHUB_SHA. Signed with Developer ID and notarized by Apple." \

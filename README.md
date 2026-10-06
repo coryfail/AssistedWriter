@@ -17,7 +17,7 @@ To make a local Mac application build:
 npm run package:mac
 ```
 
-The app build is placed under `dist/`. Local builds without a Developer ID certificate and Apple notarization credentials are for development only and may be blocked by macOS.
+The renderer build is placed under `dist/`; packaged Mac apps are placed under `release/`. Local builds without a Developer ID certificate and Apple notarization credentials are for development only and may be blocked by macOS.
 
 Each push to `main` runs the Mac release workflow. It turns the source version (currently `0.2.0`) into a unique prerelease such as `v0.2.0-beta.4`, builds one universal app for Intel and Apple Silicon Macs, and publishes a DMG, ZIP, and SHA-256 checksum file. The release is published only after code-signature, Gatekeeper, notarization, architecture, DMG, and ZIP checks pass.
 
