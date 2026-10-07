@@ -124,9 +124,19 @@ test("AI context and story trackers stay readable and respect request scope", as
   assert.match(full.input, /Mara is 31/);
   assert.match(full.input, /At dawn/);
   const brainstormInput = buildReviewInput(loaded,
-    { chapterId: first.id, action: "brainstorm", noteTarget: "characters" }, "instructions");
+    { chapterId: first.id, action: "brainstorm", noteRequested: true,
+      noteTarget: "characters", question: "What motivates Mara?",
+      history: [{ role: "user", text: "Maybe Mara lied about the house." },
+        { role: "assistant", text: "What would she gain?" }] }, "instructions");
   assert.match(brainstormInput.input, /Proposed note destination: characters/);
   assert.match(brainstormInput.input, /Mara is 31/);
+  assert.match(brainstormInput.input, /Maybe Mara lied about the house/);
+  assert.match(brainstormInput.input, /What motivates Mara\?/);
+  const conversationInput = buildReviewInput(loaded,
+    { chapterId: first.id, action: "brainstorm", noteRequested: false,
+      question: "Could this be a family secret?" }, "instructions");
+  assert.match(conversationInput.input, /Draft a note now: no/);
+  assert.doesNotMatch(conversationInput.input, /Proposed note destination/);
   const proposed = await book.appendNote(root, "characters", first.id,
     { title: "Mara's worry", content: "Possible fear: the house remembers her." });
   assert.match(proposed.references.characters, /Mara is 31\.[\s\S]*## Mara's worry/);

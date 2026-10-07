@@ -172,11 +172,18 @@ jobs:
           PRERELEASE: ${{ steps.version.outputs.prerelease }}
         run: |
           release_flags=(--target "$GITHUB_SHA" --title "Assisted Writer $RELEASE_VERSION" \
-            --notes "Universal Mac build for Intel and Apple Silicon from commit $GITHUB_SHA. Signed with Developer ID and notarized by Apple.")
+            --notes "Universal Mac build for Intel and Apple Silicon from commit $GITHUB_SHA. Signed with Developer ID and notarized by Apple." --draft)
           if [[ "$PRERELEASE" == "true" ]]; then
-            release_flags+=(--prerelease --latest=false)
+            release_flags+=(--prerelease)
           else
-            release_flags+=(--verify-tag --latest)
+            release_flags+=(--verify-tag)
           fi
           gh release create "$RELEASE_TAG" release/*.dmg release/*-mac.zip release/SHA256SUMS.txt \
             release/latest*.yml "${release_flags[@]}"
+          # A draft stays out of the public release feed until every asset is uploaded.
+          # electron-updater must never see a release without latest-mac.yml.
+          if [[ "$PRERELEASE" == "true" ]]; then
+            gh release edit "$RELEASE_TAG" --draft=false --latest=false
+          else
+            gh release edit "$RELEASE_TAG" --draft=false --latest
+          fi

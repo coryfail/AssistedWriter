@@ -1,7 +1,11 @@
+const missingChannelFile = (error) =>
+  error?.code === "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND" ||
+  /Cannot find latest-mac\.yml in the latest release artifacts/.test(error?.message || "");
+
 function createUpdateController(updater, publish = () => {}) {
   updater.autoDownload = false;
   updater.autoInstallOnAppQuit = true;
-  updater.allowPrerelease = true;
+  updater.allowPrerelease = Boolean(updater.currentVersion?.prerelease?.length);
   let state = { status: "idle" };
   const set = (status, details = {}) => {
     state = { status, ...details };
@@ -17,10 +21,30 @@ function createUpdateController(updater, publish = () => {}) {
     total: progress.total,
   }));
   updater.on("update-downloaded", (info) => set("downloaded", { version: info.version }));
-  updater.on("error", (error) => set("error", { message: error.message }));
+  updater.on("error", (error) => set("error", {
+    message: missingChannelFile(error)
+      ? "The latest release is still being published. Try again shortly."
+      : "Could not check for updates right now. Try again.",
+  }));
   return {
     status: () => state,
-    async check() { await updater.checkForUpdates(); return state; },
+    async check() {
+      try {
+        await updater.checkForUpdates();
+        return state;
+      } catch (error) {
+        if (missingChannelFile(error)) {
+          const version = /\/releases\/download\/v?([^/]+)\/latest-mac\.yml/.exec(error.message)?.[1];
+          if (version && version === updater.currentVersion?.version)
+            return set("not-available", { version });
+        }
+        return set("error", {
+          message: missingChannelFile(error)
+            ? "The latest release is still being published. Try again shortly."
+            : "Could not check for updates right now. Try again.",
+        });
+      }
+    },
     async download() {
       if (state.status !== "available") throw new Error("Check for an available update first.");
       set("downloading", { percent: 0 });

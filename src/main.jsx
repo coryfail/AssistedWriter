@@ -66,6 +66,9 @@ function App() {
   const [aiContext, setAiContext] = useState({ bookNotes: true, chapterNotes: true,
     bookContext: true, chapterContext: true, trackers: true, otherChapters: true });
   const [question, setQuestion] = useState("");
+  const [brainstormInput, setBrainstormInput] = useState("");
+  const [brainstormMessages, setBrainstormMessages] = useState([]);
+  const [brainstormBusy, setBrainstormBusy] = useState(false);
   const [noteTarget, setNoteTarget] = useState("book");
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -90,6 +93,11 @@ function App() {
   const rootRef = useRef(null);
   const timer = useRef(null);
   const notesTimer = useRef(null);
+  const brainstormThreadRef = useRef(null);
+  useEffect(() => {
+    if (brainstormThreadRef.current)
+      brainstormThreadRef.current.scrollTop = brainstormThreadRef.current.scrollHeight;
+  }, [brainstormMessages.length]);
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [2, 3] } }),
@@ -270,6 +278,8 @@ function App() {
       emitUpdate: false,
     });
     setResult(null);
+    setBrainstormMessages([]);
+    setBrainstormInput("");
     setGitState(null);
     setGitDiff(null);
     setSection("write");
@@ -513,19 +523,68 @@ function App() {
     }
   }
 
-  async function addProposedNote(note, index) {
+  async function sendBrainstorm(noteRequested = false) {
+    const prompt = brainstormInput.trim();
+    if (!prompt && !noteRequested) return;
+    if (!prompt && !brainstormMessages.length) return;
+    if (!hasKey) {
+      setModal("settings");
+      return;
+    }
     try {
       await flush();
       setBusy(true);
-      const updated = await api.appendNote(book.root, result.noteTarget, result.chapterId, note);
+      setBrainstormBusy(true);
+      setResult(null);
+      const { from, to } = editor.state.selection;
+      const selection = section === "write" ? editor.state.doc.textBetween(from, to, "\n") : "";
+      const userText = prompt || "Draft a note from our discussion.";
+      const response = await api.review(book.root, {
+        action: "brainstorm",
+        chapterId: selectedId,
+        selection,
+        question: userText,
+        noteRequested,
+        noteTarget,
+        history: brainstormMessages.map((message) => ({
+          role: message.role,
+          text: message.text + (message.notes?.length
+            ? `\nProposed note: ${message.notes.map((note) => `${note.title}: ${note.content}`).join("; ")}`
+            : ""),
+        })),
+        context: aiContext,
+      });
+      setBrainstormMessages((previous) => [...previous,
+        { id: crypto.randomUUID(), role: "user", text: userText },
+        { id: crypto.randomUUID(), role: "assistant", text: response.summary,
+          notes: response.notes, noteTarget: response.noteTarget,
+          chapterId: response.chapterId },
+      ]);
+      setBrainstormInput("");
+      setSidePanel("assist");
+    } catch (error) {
+      announce(error.message);
+    } finally {
+      setBusy(false);
+      setBrainstormBusy(false);
+    }
+  }
+
+  async function addProposedNote(note, messageId, index, target, chapterId) {
+    try {
+      await flush();
+      setBusy(true);
+      const updated = await api.appendNote(book.root, target, chapterId, note);
       setBook(updated);
-      if (result.noteTarget === "book" && section === "book-notes")
+      if (target === "book" && section === "book-notes")
         setNotes(updated.bookNotes);
-      if (result.noteTarget === "chapter" && section === "notes" && selectedId === result.chapterId)
-        setNotes(updated.chapters.find((chapter) => chapter.id === result.chapterId).notes);
-      if (section === "reference" && referenceKind === result.noteTarget)
-        setReferenceText(updated.references[result.noteTarget]);
-      setResult((prev) => prev ? { ...prev, notes: prev.notes.filter((_, i) => i !== index) } : prev);
+      if (target === "chapter" && section === "notes" && selectedId === chapterId)
+        setNotes(updated.chapters.find((chapter) => chapter.id === chapterId).notes);
+      if (section === "reference" && referenceKind === target)
+        setReferenceText(updated.references[target]);
+      setBrainstormMessages((previous) => previous.map((message) => message.id === messageId
+        ? { ...message, notes: message.notes.filter((_, i) => i !== index) }
+        : message));
       announce("Note added to the book folder.");
     } catch (error) {
       announce(error.message);
@@ -578,9 +637,9 @@ function App() {
 
   async function checkForUpdates() {
     try {
-      await api.checkForUpdates();
-    } catch (error) {
-      setUpdate({ status: "error", message: error.message });
+      setUpdate(await api.checkForUpdates());
+    } catch {
+      setUpdate({ status: "error", message: "Could not check for updates right now. Try again." });
     }
   }
 
@@ -1395,7 +1454,48 @@ function App() {
                   </button>
                 </div>
                 <div className="brainstorm-box">
-                  <label htmlFor="brainstorm-target">BRAINSTORM NOTES FOR</label>
+                  <div className="brainstorm-heading">
+                    <label>AI BRAINSTORM</label>
+                    {brainstormMessages.length > 0 && <button className="brainstorm-clear"
+                      disabled={busy} onClick={() => setBrainstormMessages([])}>New conversation</button>}
+                  </div>
+                  <p>Tell the assistant what you are thinking. Explore the idea together before making a note.</p>
+                  {brainstormMessages.length > 0 && <div className="brainstorm-thread"
+                    ref={brainstormThreadRef} aria-label="Brainstorm conversation">
+                    {brainstormMessages.map((message) => <div key={message.id}
+                      className={`brainstorm-message ${message.role}`}>
+                      <strong>{message.role === "user" ? "You" : "Assistant"}</strong>
+                      <div className="brainstorm-text">{message.text}</div>
+                      {message.notes?.map((note, i) => <div className="brainstorm-note" key={`${i}-${note.title}`}>
+                        <strong>Proposed note · {message.noteTarget === "chapter" ? "chapter" : message.noteTarget}</strong>
+                        <b>{note.title}</b>
+                        <div className="note-content">{note.content}</div>
+                        <div className="suggestion-actions">
+                          <button className="apply" disabled={busy} onClick={() =>
+                            addProposedNote(note, message.id, i, message.noteTarget, message.chapterId)}>
+                            <Check size={14} /> Add note
+                          </button>
+                          <button disabled={busy} onClick={() => setBrainstormMessages((previous) => previous.map((item) =>
+                            item.id === message.id ? { ...item, notes: item.notes.filter((_, n) => n !== i) } : item))}>
+                            <X size={14} /> Dismiss
+                          </button>
+                        </div>
+                      </div>)}
+                    </div>)}
+                  </div>}
+                  <textarea value={brainstormInput} onChange={(event) => setBrainstormInput(event.target.value)}
+                    placeholder="I think my protagonist is hiding something, but I’m not sure why…"
+                    disabled={busy} aria-label="Your brainstorm message" />
+                  <div className="brainstorm-send-actions">
+                    <button onClick={() => sendBrainstorm(false)} disabled={busy || !brainstormInput.trim()}>
+                      <Send size={15} /> Send
+                    </button>
+                    <button className="secondary" onClick={() => sendBrainstorm(true)}
+                      disabled={busy || (!brainstormInput.trim() && !brainstormMessages.length)}>
+                      <NotebookPen size={15} /> Propose a note
+                    </button>
+                  </div>
+                  <label htmlFor="brainstorm-target">SAVE PROPOSED NOTE IN</label>
                   <select id="brainstorm-target" value={noteTarget}
                     onChange={(event) => setNoteTarget(event.target.value)}>
                     <option value="book">Book notes</option>
@@ -1405,14 +1505,11 @@ function App() {
                     <option value="timeline">Timeline tracker</option>
                     <option value="terminology">Terminology tracker</option>
                   </select>
-                  <button onClick={() => runReview("brainstorm")} disabled={busy || !selectedId}>
-                    <Sparkles size={16} /> Brainstorm note ideas
-                  </button>
-                  <small>Use the question below to guide the ideas. Add only the notes you want.</small>
+                  <small>Conversation alone saves no notes. You approve each proposed note.</small>
                 </div>
                 <p className="scope-preview">Choose the sources for the next AI request below.</p>
                 <div className="ask-box">
-                  <label>QUESTION OR BRAINSTORM PROMPT</label>
+                  <label>QUICK CHAPTER QUESTION</label>
                   <textarea
                     value={question}
                     onChange={(event) => setQuestion(event.target.value)}
@@ -1478,41 +1575,21 @@ function App() {
             </div>}
             {sidePanel !== "git" && busy && (
               <div className="ai-busy">
-                <LoaderCircle className="spin" size={20} /> Reading your
-                chapter…
+                <LoaderCircle className="spin" size={20} /> {brainstormBusy
+                  ? "Thinking through your idea…" : "Reading your chapter…"}
               </div>
             )}
             {sidePanel !== "git" && result && (
               <div className="review-result">
                 <div className="result-heading">
                   <span className="eyebrow">
-                    {result.action === "editor"
-                      ? "EDITOR REPORT"
-                      : result.action === "brainstorm" ? "BRAINSTORM IDEAS" : "ASSISTANT RESPONSE"}
+                    {result.action === "editor" ? "EDITOR REPORT" : "ASSISTANT RESPONSE"}
                   </span>
                   <button className="icon" onClick={() => setResult(null)}>
                     <X size={17} />
                   </button>
                 </div>
                 <p className="result-summary">{result.summary}</p>
-                {result.action === "brainstorm" && <div className="result-group">
-                  <h5>Notes for {({ book: "book notes", chapter: "chapter notes",
-                    characters: "characters", locations: "locations", timeline: "timeline",
-                    terminology: "terminology" })[result.noteTarget]} <span>{result.notes.length}</span></h5>
-                  {result.notes.length === 0 && <p>No note ideas returned. Try a more specific prompt.</p>}
-                  {result.notes.map((note, i) => <div className="suggestion note-proposal" key={`${i}-${note.title}`}>
-                    <strong>{note.title}</strong>
-                    <div className="note-content">{note.content}</div>
-                    <div className="suggestion-actions">
-                      <button className="apply" disabled={busy} onClick={() => addProposedNote(note, i)}>
-                        <Check size={14} /> Add note
-                      </button>
-                      <button disabled={busy} onClick={() => setResult((prev) => ({
-                        ...prev, notes: prev.notes.filter((_, n) => n !== i),
-                      }))}><X size={14} /> Dismiss</button>
-                    </div>
-                  </div>)}
-                </div>}
                 {result.warnings?.length > 0 && <div className="result-group">
                   <h5>Continuity warnings <span>{result.warnings.length}</span></h5>
                   {result.warnings.map((warning, i) => <div className="finding" key={i}>

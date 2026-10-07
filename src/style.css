@@ -912,15 +912,88 @@ body {
   letter-spacing: 0.14em;
   font-weight: 700;
 }
-.brainstorm-box select {
-  width: 100%;
-  border: 1px solid #dfd5c7;
-  border-radius: 6px;
-  background: #fffdfa;
-  padding: 9px;
-  color: #453a31;
+.brainstorm-box p {
+  color: #93877b;
+  font-size: 11px;
+  line-height: 1.55;
+  margin: 0;
 }
-.brainstorm-box button {
+.brainstorm-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.brainstorm-box .brainstorm-clear {
+  background: transparent;
+  border: 0;
+  color: #986d54;
+  padding: 0;
+  font-size: 10px;
+  font-weight: 700;
+}
+.brainstorm-thread {
+  width: 100%;
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 2px 2px 8px;
+}
+.brainstorm-message {
+  border: 1px solid #e8ded2;
+  border-radius: 8px;
+  background: #fffdfa;
+  padding: 11px;
+}
+.brainstorm-message.user {
+  background: #f6efe7;
+}
+.brainstorm-message > strong {
+  color: #906347;
+  font-size: 10px;
+}
+.brainstorm-text {
+  color: #493d34;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  margin-top: 5px;
+}
+.brainstorm-note {
+  border-top: 1px solid #e8ded2;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+.brainstorm-note > strong {
+  display: block;
+  color: #986d54;
+  font-size: 10px;
+  margin-bottom: 5px;
+}
+.brainstorm-note > b {
+  color: #493d34;
+  font-size: 12px;
+}
+.brainstorm-box textarea {
+  width: 100%;
+  min-height: 80px;
+  resize: vertical;
+  border: 1px solid #dfd5c7;
+  border-radius: 7px;
+  background: #fffdfa;
+  padding: 10px;
+  color: #453a31;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.brainstorm-send-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.brainstorm-send-actions button {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -931,6 +1004,32 @@ body {
   font-size: 11px;
   font-weight: 700;
   padding: 9px 12px;
+}
+.brainstorm-send-actions button.secondary {
+  background: #f7f1e9;
+  border: 1px solid #e8ded2;
+  color: #754e3e;
+}
+.brainstorm-box button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.brainstorm-box .suggestion-actions button {
+  background: transparent;
+  border: 0;
+  color: #87796e;
+  padding: 0;
+}
+.brainstorm-box .suggestion-actions button.apply {
+  color: #5b6d4b;
+}
+.brainstorm-box select {
+  width: 100%;
+  border: 1px solid #dfd5c7;
+  border-radius: 6px;
+  background: #fffdfa;
+  padding: 9px;
+  color: #453a31;
 }
 .brainstorm-box small {
   color: #93877b;

@@ -5,6 +5,7 @@ const { createUpdateController } = require("../electron/updater.cjs");
 
 test("update check, download progress, and restart follow the packaged app flow", async () => {
   const source = new EventEmitter();
+  source.currentVersion = { version: "0.2.0-beta.19", prerelease: ["beta", 19] };
   const seen = [];
   let installed = false;
   source.checkForUpdates = async () => {
@@ -31,4 +32,34 @@ test("update check, download progress, and restart follow the packaged app flow"
   assert.equal(controller.status().status, "installing");
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(installed, true);
+});
+
+test("a missing metadata file for the installed release reports up to date", async () => {
+  const source = new EventEmitter();
+  source.currentVersion = { version: "0.3.1" };
+  source.checkForUpdates = async () => {
+    source.emit("checking-for-update");
+    const error = new Error("Cannot find latest-mac.yml in the latest release artifacts (https://github.com/coryfail/AssistedWriter/releases/download/v0.3.1/latest-mac.yml): HttpError: 404");
+    error.code = "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND";
+    source.emit("error", error);
+    throw error;
+  };
+  const controller = createUpdateController(source);
+  assert.equal(source.allowPrerelease, false);
+  assert.deepEqual(await controller.check(), { status: "not-available", version: "0.3.1" });
+});
+
+test("a newer release still uploading metadata gives a short retry message", async () => {
+  const source = new EventEmitter();
+  source.currentVersion = { version: "0.3.1" };
+  source.checkForUpdates = async () => {
+    const error = new Error("Cannot find latest-mac.yml in the latest release artifacts (https://github.com/coryfail/AssistedWriter/releases/download/v0.3.2/latest-mac.yml): HttpError: 404");
+    error.code = "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND";
+    throw error;
+  };
+  const controller = createUpdateController(source);
+  assert.deepEqual(await controller.check(), {
+    status: "error",
+    message: "The latest release is still being published. Try again shortly.",
+  });
 });
