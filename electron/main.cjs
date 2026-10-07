@@ -3,10 +3,13 @@ const {
   BrowserWindow,
   dialog,
   ipcMain,
+  Menu,
   safeStorage,
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { createUpdateController } = require("./updater.cjs");
+const { contextMenuTemplate } = require("./context-menu.cjs");
+const { probePublishedRelease } = require("./release-probe.cjs");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const book = require("./book.cjs");
@@ -67,17 +70,31 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      spellcheck: true,
     },
   });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   mainWindow.webContents.on("will-navigate", (event) => event.preventDefault());
+  mainWindow.webContents.on("context-menu", (_event, params) => {
+    const template = contextMenuTemplate(params, mainWindow.webContents);
+    if (template.length) Menu.buildFromTemplate(template).popup({
+      window: mainWindow,
+      frame: params.frame || undefined,
+    });
+  });
   mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
 }
 
 const updater = createUpdateController(autoUpdater, (status) =>
-  mainWindow?.webContents.send("update:status", status));
+  mainWindow?.webContents.send("update:status", status), probePublishedRelease);
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { role: "appMenu" },
+    { role: "editMenu" },
+    { role: "viewMenu" },
+    { role: "windowMenu" },
+  ]));
   createWindow();
   if (app.isPackaged) {
     setTimeout(() => updater.check().catch(() => {}), 2500);

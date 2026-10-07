@@ -253,6 +253,7 @@ function App() {
       Markdown,
     ],
     content: "",
+    editorProps: { attributes: { spellcheck: "true", "aria-label": "Manuscript" } },
     onUpdate: ({ editor }) => {
       setSaveState("Saving…");
       clearTimeout(timer.current);
@@ -911,9 +912,11 @@ function App() {
                       `Version ${update.version} is ready to install.`}
                     {update.status === "installing" && "Restarting to install the update…"}
                     {update.status === "not-available" && "You are up to date."}
+                    {update.status === "pending" &&
+                      `Version ${update.version} is published. Waiting for GitHub's update feed; checking again automatically.`}
                     {update.status === "error" &&
                       (update.message || "Could not check for an update right now.")}
-                    {!["checking", "available", "downloading", "downloaded", "installing", "not-available", "error"].includes(update.status) &&
+                    {!["checking", "available", "downloading", "downloaded", "installing", "not-available", "pending", "error"].includes(update.status) &&
                       "Updates come from the latest signed GitHub release."}
                   </span>
                 </div>
