@@ -52,6 +52,77 @@ const countWords = (value) =>
       .match(/\S+/g) || []
   ).length;
 
+function FormattingToolbar({ editor, hint }) {
+  return <div className="editor-toolbar">
+    <div className="tool-group">
+      <button title="Bold" aria-label="Bold" disabled={!editor}
+        className={editor?.isActive("bold") ? "selected" : ""}
+        onClick={() => editor.chain().focus().toggleBold().run()}><Bold size={17} /></button>
+      <button title="Italic" aria-label="Italic" disabled={!editor}
+        className={editor?.isActive("italic") ? "selected" : ""}
+        onClick={() => editor.chain().focus().toggleItalic().run()}><Italic size={17} /></button>
+      <button title="Strikethrough" aria-label="Strikethrough" disabled={!editor}
+        className={editor?.isActive("strike") ? "selected" : ""}
+        onClick={() => editor.chain().focus().toggleStrike().run()}><Strikethrough size={17} /></button>
+    </div>
+    <div className="tool-separator" />
+    <div className="tool-group">
+      <button title="Subheading" aria-label="Subheading" disabled={!editor}
+        className={editor?.isActive("heading", { level: 2 }) ? "selected" : ""}
+        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><Heading2 size={18} /></button>
+      <button title="Scene break" aria-label="Scene break" disabled={!editor}
+        onClick={() => editor.chain().focus().setHorizontalRule().run()}><Asterisk size={17} /></button>
+      <button title="Smaller subheading" aria-label="Smaller subheading" disabled={!editor}
+        className={editor?.isActive("heading", { level: 3 }) ? "selected" : ""}
+        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}><Heading3 size={17} /></button>
+      <button title="Block quote" aria-label="Block quote" disabled={!editor}
+        className={editor?.isActive("blockquote") ? "selected" : ""}
+        onClick={() => editor.chain().focus().toggleBlockquote().run()}><Quote size={17} /></button>
+      <button title="Bulleted list" aria-label="Bulleted list" disabled={!editor}
+        className={editor?.isActive("bulletList") ? "selected" : ""}
+        onClick={() => editor.chain().focus().toggleBulletList().run()}><List size={17} /></button>
+      <button title="Numbered list" aria-label="Numbered list" disabled={!editor}
+        className={editor?.isActive("orderedList") ? "selected" : ""}
+        onClick={() => editor.chain().focus().toggleOrderedList().run()}><ListOrdered size={17} /></button>
+    </div>
+    <div className="tool-separator" />
+    <div className="tool-group">
+      <button title="Undo" aria-label="Undo" disabled={!editor}
+        onClick={() => editor.chain().focus().undo().run()}><Undo2 size={17} /></button>
+      <button title="Redo" aria-label="Redo" disabled={!editor}
+        onClick={() => editor.chain().focus().redo().run()}><Redo2 size={17} /></button>
+    </div>
+    {hint && <span className="toolbar-hint">{hint}</span>}
+  </div>;
+}
+
+function MarkdownReferenceEditor({ value, onChange, kicker, title, description }) {
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const editor = useEditor({
+    extensions: [StarterKit, Markdown],
+    content: "",
+    editorProps: { attributes: { spellcheck: "true", "aria-label": "Reference document" } },
+    onUpdate: ({ editor: current }) => onChangeRef.current(current.getMarkdown()),
+  });
+  useEffect(() => {
+    if (editor && value !== editor.getMarkdown())
+      editor.chain().setContent(value, { contentType: "markdown", emitUpdate: false })
+        .setMeta("addToHistory", false).run();
+  }, [editor, value]);
+  return <>
+    <FormattingToolbar editor={editor} />
+    <div className="notes-workspace">
+      <div className="notes-page">
+        <div className="page-kicker">{kicker}</div>
+        <h1>{title}</h1>
+        <p>{description}</p>
+        <EditorContent editor={editor} className="reference-prose" />
+      </div>
+    </div>
+  </>;
+}
+
 function App() {
   const [book, setBook] = useState(null);
   const [recent, setRecent] = useState([]);
@@ -1093,32 +1164,21 @@ function App() {
             </div>
           </>
         ) : (
-          <div className="notes-workspace">
-            <div className="notes-page">
-              <div className="page-kicker">
-                {section === "reference" ? "STORY REFERENCE" : section === "book-notes"
-                  ? "BOOK REFERENCE"
-                  : "CHAPTER REFERENCE"}
-              </div>
-              <h1>
-                {section === "reference" ? referenceKind.split("-").map((part) => part[0].toUpperCase() + part.slice(1)).join(" ") : section === "book-notes"
-                  ? "Book notes"
-                  : `${current?.title} notes`}
-              </h1>
-              <p>
-                {section === "reference" ? "Readable Markdown shared with Codex. Choose which sources the in-app AI reads in its panel." : section === "book-notes"
-                  ? "Characters, world details, ideas, and anything you want the assistant or Codex to remember."
-                  : "Plans, questions, continuity details, and reminders for this chapter."}
-              </p>
-              <textarea
-                spellCheck
-                value={section === "reference" ? referenceText : notes}
-                onChange={(event) => section === "reference" ? changeReference(event.target.value) : changeNotes(event.target.value)}
-                aria-label="Reference in Markdown"
-                placeholder="Write your notes here in Markdown…"
-              />
-            </div>
-          </div>
+          <MarkdownReferenceEditor
+            key={`${book.root}:${section}:${section === "reference" ? referenceKind : ""}:${selectedId}`}
+            value={section === "reference" ? referenceText : notes}
+            onChange={section === "reference" ? changeReference : changeNotes}
+            kicker={section === "reference" ? "STORY REFERENCE" : section === "book-notes"
+              ? "BOOK REFERENCE" : "CHAPTER REFERENCE"}
+            title={section === "reference"
+              ? referenceKind.split("-").map((part) => part[0].toUpperCase() + part.slice(1)).join(" ")
+              : section === "book-notes" ? "Book notes" : `${current?.title} notes`}
+            description={section === "reference"
+              ? "Readable Markdown shared with Codex. Choose which sources the in-app AI reads in its panel."
+              : section === "book-notes"
+                ? "Characters, world details, ideas, and anything you want the assistant or Codex to remember."
+                : "Plans, questions, continuity details, and reminders for this chapter."}
+          />
         )}
       </main>
       {panelOpen && (

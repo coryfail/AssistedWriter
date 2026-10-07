@@ -547,32 +547,47 @@ body {
   padding: 72px 74px;
   box-shadow: 0 3px 16px #5b493617;
 }
-.notes-page h1 {
+.notes-page > h1 {
   font-family: "Libre Baskerville", Georgia, serif;
   font-weight: 400;
   font-size: 38px;
   letter-spacing: -0.05em;
   margin: 22px 0 12px;
 }
-.notes-page p {
+.notes-page > p {
   font-size: 13px;
   line-height: 1.6;
   color: #968b7f;
   max-width: 430px;
 }
-.notes-page textarea {
-  display: block;
-  width: 100%;
+.reference-prose {
   min-height: 490px;
   margin-top: 35px;
-  border: 0;
-  resize: vertical;
-  outline: none !important;
-  background: transparent;
   color: #3a342d;
   font-family: "Libre Baskerville", Georgia, serif;
   font-size: 14px;
-  line-height: 1.9;
+  line-height: 1.85;
+}
+.reference-prose .tiptap {
+  min-height: 490px;
+  outline: none;
+}
+.reference-prose p { margin: 0 0 0.75em; }
+.reference-prose h1 { font-size: 26px; font-weight: 400; margin: 0 0 0.9em; line-height: 1.4; }
+.reference-prose h2 { font-size: 20px; font-weight: 400; margin: 1.5em 0 0.6em; }
+.reference-prose h3 { font-size: 16px; margin: 1.3em 0 0.5em; }
+.reference-prose blockquote { margin: 1em 0; padding-left: 1em; border-left: 2px solid #c2a693; color: #6b5a4c; }
+.reference-prose ul, .reference-prose ol { padding-left: 1.6em; margin: 0.7em 0; }
+.reference-prose li p { margin: 0; }
+.reference-prose hr { border: 0; border-top: 1px solid #cbb5a0; margin: 1.7em 0; }
+.reference-prose pre { overflow-x: auto; background: #f4efe8; padding: 12px; border-radius: 5px; }
+.reference-prose code { background: #f4efe8; padding: 0.1em 0.25em; border-radius: 3px; }
+.reference-prose .is-empty:first-child:before {
+  content: "Start writing here…";
+  color: #b3a79a;
+  float: left;
+  height: 0;
+  pointer-events: none;
 }
 .ai-panel {
   width: 350px;
