@@ -66,6 +66,7 @@ function App() {
   const [aiContext, setAiContext] = useState({ bookNotes: true, chapterNotes: true,
     bookContext: true, chapterContext: true, trackers: true, otherChapters: true });
   const [question, setQuestion] = useState("");
+  const [noteTarget, setNoteTarget] = useState("book");
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [saveState, setSaveState] = useState("Saved");
@@ -494,16 +495,38 @@ function App() {
       setResult(null);
       setPanelOpen(true);
       const { from, to } = editor.state.selection;
-      const selection = editor.state.doc.textBetween(from, to, "\n");
+      const selection = section === "write" ? editor.state.doc.textBetween(from, to, "\n") : "";
       const response = await api.review(book.root, {
         action,
         chapterId: selectedId,
         selection,
         question,
+        noteTarget,
         context: aiContext,
       });
       setResult(response);
       setSidePanel(action === "editor" ? "editor" : "assist");
+    } catch (error) {
+      announce(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addProposedNote(note, index) {
+    try {
+      await flush();
+      setBusy(true);
+      const updated = await api.appendNote(book.root, result.noteTarget, result.chapterId, note);
+      setBook(updated);
+      if (result.noteTarget === "book" && section === "book-notes")
+        setNotes(updated.bookNotes);
+      if (result.noteTarget === "chapter" && section === "notes" && selectedId === result.chapterId)
+        setNotes(updated.chapters.find((chapter) => chapter.id === result.chapterId).notes);
+      if (section === "reference" && referenceKind === result.noteTarget)
+        setReferenceText(updated.references[result.noteTarget]);
+      setResult((prev) => prev ? { ...prev, notes: prev.notes.filter((_, i) => i !== index) } : prev);
+      announce("Note added to the book folder.");
     } catch (error) {
       announce(error.message);
     } finally {
@@ -1371,9 +1394,25 @@ function App() {
                     </span>
                   </button>
                 </div>
+                <div className="brainstorm-box">
+                  <label htmlFor="brainstorm-target">BRAINSTORM NOTES FOR</label>
+                  <select id="brainstorm-target" value={noteTarget}
+                    onChange={(event) => setNoteTarget(event.target.value)}>
+                    <option value="book">Book notes</option>
+                    <option value="chapter">Current chapter notes</option>
+                    <option value="characters">Characters tracker</option>
+                    <option value="locations">Locations tracker</option>
+                    <option value="timeline">Timeline tracker</option>
+                    <option value="terminology">Terminology tracker</option>
+                  </select>
+                  <button onClick={() => runReview("brainstorm")} disabled={busy || !selectedId}>
+                    <Sparkles size={16} /> Brainstorm note ideas
+                  </button>
+                  <small>Use the question below to guide the ideas. Add only the notes you want.</small>
+                </div>
                 <p className="scope-preview">Choose the sources for the next AI request below.</p>
                 <div className="ask-box">
-                  <label>ASK ABOUT YOUR WRITING</label>
+                  <label>QUESTION OR BRAINSTORM PROMPT</label>
                   <textarea
                     value={question}
                     onChange={(event) => setQuestion(event.target.value)}
@@ -1430,7 +1469,7 @@ function App() {
               <strong>AI reads</strong>
               {[["bookNotes", "Book notes"], ["chapterNotes", "Chapter notes"],
                 ["bookContext", "Book context"], ["chapterContext", "Chapter context"],
-                ["trackers", "Story trackers (continuity)"], ["otherChapters", "Other chapters (continuity)"],
+                ["trackers", "Story trackers (continuity and brainstorming)"], ["otherChapters", "Other chapters (continuity)"],
               ].map(([key, label]) => <label key={key}>
                 <input type="checkbox" checked={aiContext[key]} onChange={(event) =>
                   setAiContext((prev) => ({ ...prev, [key]: event.target.checked }))} /> {label}
@@ -1449,13 +1488,31 @@ function App() {
                   <span className="eyebrow">
                     {result.action === "editor"
                       ? "EDITOR REPORT"
-                      : "ASSISTANT RESPONSE"}
+                      : result.action === "brainstorm" ? "BRAINSTORM IDEAS" : "ASSISTANT RESPONSE"}
                   </span>
                   <button className="icon" onClick={() => setResult(null)}>
                     <X size={17} />
                   </button>
                 </div>
                 <p className="result-summary">{result.summary}</p>
+                {result.action === "brainstorm" && <div className="result-group">
+                  <h5>Notes for {({ book: "book notes", chapter: "chapter notes",
+                    characters: "characters", locations: "locations", timeline: "timeline",
+                    terminology: "terminology" })[result.noteTarget]} <span>{result.notes.length}</span></h5>
+                  {result.notes.length === 0 && <p>No note ideas returned. Try a more specific prompt.</p>}
+                  {result.notes.map((note, i) => <div className="suggestion note-proposal" key={`${i}-${note.title}`}>
+                    <strong>{note.title}</strong>
+                    <div className="note-content">{note.content}</div>
+                    <div className="suggestion-actions">
+                      <button className="apply" disabled={busy} onClick={() => addProposedNote(note, i)}>
+                        <Check size={14} /> Add note
+                      </button>
+                      <button disabled={busy} onClick={() => setResult((prev) => ({
+                        ...prev, notes: prev.notes.filter((_, n) => n !== i),
+                      }))}><X size={14} /> Dismiss</button>
+                    </div>
+                  </div>)}
+                </div>}
                 {result.warnings?.length > 0 && <div className="result-group">
                   <h5>Continuity warnings <span>{result.warnings.length}</span></h5>
                   {result.warnings.map((warning, i) => <div className="finding" key={i}>

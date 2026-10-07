@@ -135,6 +135,9 @@ ipcMain.handle("chapter:delete", (_event, root, id) =>
 ipcMain.handle("notes:save", (_event, root, id, content) =>
   book.saveNotes(root, id, content),
 );
+ipcMain.handle("notes:append", (_event, root, target, chapterId, note) =>
+  book.appendNote(root, target, chapterId, note),
+);
 ipcMain.handle("reference:save", (_event, root, kind, chapterId, content) =>
   book.saveReference(root, kind, chapterId, content),
 );

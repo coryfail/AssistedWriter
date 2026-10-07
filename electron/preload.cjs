@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld("writer", {
     invoke("chapter:reorder", root, id, direction),
   deleteChapter: (root, id) => invoke("chapter:delete", root, id),
   saveNotes: (root, id, content) => invoke("notes:save", root, id, content),
+  appendNote: (root, target, chapterId, note) =>
+    invoke("notes:append", root, target, chapterId, note),
   saveReference: (root, kind, chapterId, content) =>
     invoke("reference:save", root, kind, chapterId, content),
   saveMetadata: (root, values) => invoke("book:metadata", root, values),

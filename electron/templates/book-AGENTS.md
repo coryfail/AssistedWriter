@@ -82,7 +82,10 @@ The app removes that first heading when loading the editor and writes it back wh
 
 `notes/book.md` and each `chapters/<notesFile>` are separate Markdown documents. They can contain outlines, character facts, chronology, questions, and continuity notes. The chapter notes file may start with `# Notes for <chapter title>`. Notes and editorial reports are excluded from manuscript exports.
 
-`notes/ai-context.md` and `chapters/<manuscript stem>.context.md` hold guidance the author wants the in-app AI to consider. The author can turn either source off for a request. Character, location, timeline, and terminology trackers are Markdown in `notes/`; continuity checks can read them when enabled. For existing books, missing context or tracker files are created when the book is opened. Keep factual assertions and uncertainties distinct, so a continuity warning can cite evidence rather than guess.
+`notes/ai-context.md` and `chapters/<manuscript stem>.context.md` hold guidance the author wants the in-app AI to consider. The author can turn either source off for a request. Character, location, timeline, and terminology trackers are Markdown in `notes/`; brainstorming and continuity checks can read them when enabled. For existing books, missing context or tracker files are created when the book is opened. Keep factual assertions and uncertainties distinct, so a continuity warning can cite evidence rather than guess.
+
+<!-- assisted-writer-brainstorm-v1 -->
+The in-app assistant can propose notes for `notes/book.md`, the current chapter's `notesFile`, or one of the four tracker files. These ideas are optional until the author approves each one; approval appends a `##` heading and Markdown content to the chosen file. When brainstorming outside the app, keep proposed ideas distinct from established story facts and let the author choose what becomes a durable note.
 
 ## Adding or changing chapters
 

@@ -15,6 +15,7 @@ const chapterPath = (root, chapter) =>
 const notePath = (root, chapter) =>
   path.join(root, "chapters", chapter.notesFile);
 const referenceNames = ["characters", "locations", "timeline", "terminology"];
+const noteTargets = ["book", "chapter", ...referenceNames];
 const referencePath = (root, name) =>
   path.join(root, "notes", `${name}.md`);
 const contextPath = (root) => path.join(root, "notes", "ai-context.md");
@@ -48,6 +49,11 @@ async function migrateBookReferences(root, manifest) {
       .every((name) => guide.includes(name))) {
     const addendum = await fs.readFile(path.join(__dirname, "templates", "book-reference-addendum.md"), "utf8");
     await atomicWrite(guidePath, `${guide.trimEnd()}\n\n${addendum}`);
+  }
+  const currentGuide = await readOptional(guidePath);
+  if (!currentGuide.includes("<!-- assisted-writer-brainstorm-v1 -->")) {
+    const addendum = await fs.readFile(path.join(__dirname, "templates", "book-brainstorm-addendum.md"), "utf8");
+    await atomicWrite(guidePath, `${currentGuide.trimEnd()}\n\n${addendum}`);
   }
 }
 const heading = (title, body) => `# ${title}\n\n${body.trim()}\n`;
@@ -194,6 +200,26 @@ async function saveNotes(root, id, content) {
   return atomicWrite(notePath(root, chapter), content);
 }
 
+async function appendNote(root, target, chapterId, note) {
+  if (!noteTargets.includes(target)) throw new Error("Unknown notes destination.");
+  const title = String(note?.title || "").trim().replace(/[\r\n]+/g, " ")
+    .replace(/^#+\s*/, "").slice(0, 120);
+  const content = String(note?.content || "").trim();
+  if (!title || !content || content.length > 10000)
+    throw new Error("The proposed note needs a title and content under 10,000 characters.");
+  const manifest = await loadManifest(root);
+  let file;
+  if (target === "book") file = path.join(root, "notes", "book.md");
+  else if (target === "chapter") {
+    const chapter = manifest.chapters.find((item) => item.id === chapterId);
+    if (!chapter) throw new Error("Chapter not found.");
+    file = notePath(root, chapter);
+  } else file = referencePath(root, target);
+  const previous = await fs.readFile(file, "utf8");
+  await atomicWrite(file, `${previous.trimEnd()}\n\n## ${title}\n\n${content}\n`);
+  return readBook(root);
+}
+
 async function reorderChapter(root, id, direction) {
   const manifest = await loadManifest(root);
   const index = manifest.chapters.findIndex((c) => c.id === id);
@@ -286,6 +312,8 @@ module.exports = {
   addChapter,
   saveChapter,
   saveNotes,
+  appendNote,
+  noteTargets,
   reorderChapter,
   deleteChapter,
   saveMetadata,
