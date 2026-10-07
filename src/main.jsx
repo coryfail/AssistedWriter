@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
+import { addTrackerEntry, deleteTrackerEntry, parseTracker,
+  updateTrackerEntry, updateTrackerSegment } from "./tracker.mjs";
 import {
   Bold,
   Italic,
@@ -96,7 +98,7 @@ function FormattingToolbar({ editor, hint }) {
   </div>;
 }
 
-function MarkdownReferenceEditor({ value, onChange, kicker, title, description }) {
+function MarkdownEditor({ value, onChange, children }) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const editor = useEditor({
@@ -110,17 +112,93 @@ function MarkdownReferenceEditor({ value, onChange, kicker, title, description }
       editor.chain().setContent(value, { contentType: "markdown", emitUpdate: false })
         .setMeta("addToHistory", false).run();
   }, [editor, value]);
-  return <>
+  return children(editor);
+}
+
+function MarkdownReferenceEditor({ value, onChange, kicker, title, description }) {
+  return <MarkdownEditor value={value} onChange={onChange}>{(editor) => <>
     <FormattingToolbar editor={editor} />
-    <div className="notes-workspace">
-      <div className="notes-page">
-        <div className="page-kicker">{kicker}</div>
-        <h1>{title}</h1>
-        <p>{description}</p>
-        <EditorContent editor={editor} className="reference-prose" />
-      </div>
+    <div className="notes-workspace"><div className="notes-page">
+      <div className="page-kicker">{kicker}</div>
+      <h1>{title}</h1>
+      <p>{description}</p>
+      <EditorContent editor={editor} className="reference-prose" />
+    </div></div>
+  </>}</MarkdownEditor>;
+}
+
+function TrackerEditor({ kind, value, onChange }) {
+  const { entries, segments } = parseTracker(value);
+  const [selectedId, setSelectedId] = useState(null);
+  const selected = entries.find((entry) => entry.id === selectedId) || entries[0];
+  const [draftName, setDraftName] = useState(selected?.name || "");
+  useEffect(() => { setDraftName(selected?.name || ""); }, [selected?.id]);
+  const label = kind === "characters" ? "character" : "location";
+  const title = kind === "characters" ? "Characters" : "Locations";
+  function add() {
+    const id = crypto.randomUUID();
+    onChange(addTrackerEntry(value, id, `New ${label}`));
+    setSelectedId(id);
+  }
+  function remove() {
+    if (!selected || !window.confirm(`Delete “${selected.name}” from ${title.toLowerCase()}?`)) return;
+    onChange(deleteTrackerEntry(value, selected.id));
+    setSelectedId(entries.find((entry) => entry.id !== selected.id)?.id || null);
+  }
+  return <div className="notes-workspace"><div className="notes-page tracker-page">
+    <div className="page-kicker">STORY REFERENCE</div>
+    <h1>{title}</h1>
+    <p>Add a name and description for each {label}. These entries stay in the readable Markdown file.</p>
+    <div className="tracker-head">
+      <strong>{entries.length} {entries.length === 1 ? label : `${label}s`}</strong>
+      <button onClick={add}><Plus size={15} /> Add {label}</button>
     </div>
-  </>;
+    {entries.length > 0 && <div className="tracker-list">
+      {entries.map((entry) => <button key={entry.id}
+        className={selected?.id === entry.id ? "active" : ""}
+        onClick={() => setSelectedId(entry.id)}>
+        <strong>{entry.name}</strong>
+        <span>{entry.description.replace(/[#*`>\n]/g, " ").trim() || "No description yet"}</span>
+      </button>)}
+    </div>}
+    {selected && <div className="tracker-detail" key={selected.id}>
+      <div className="tracker-detail-head">
+        <strong>{label.toUpperCase()} DETAILS</strong>
+        <button className="tracker-delete" onClick={remove}><Trash2 size={14} /> Delete</button>
+      </div>
+      <label htmlFor="tracker-name">Name</label>
+      <input id="tracker-name" value={draftName}
+        onChange={(event) => {
+          setDraftName(event.target.value);
+          if (event.target.value.trim()) onChange(updateTrackerEntry(value, selected.id,
+            { name: event.target.value }));
+        }}
+        onBlur={() => { if (!draftName.trim()) setDraftName(selected.name); }} />
+      <label>Description</label>
+      <MarkdownEditor value={selected.description}
+        onChange={(description) => onChange(updateTrackerEntry(value, selected.id, { description }))}>
+        {(editor) => <>
+          <FormattingToolbar editor={editor} />
+          <EditorContent editor={editor} className="reference-prose tracker-description" />
+        </>}
+      </MarkdownEditor>
+    </div>}
+    {segments.map((segment, index) => {
+      const hasLegacy = segment.text.replace(/^# [^\n]+/, "").trim();
+      if (!hasLegacy && index !== 0) return null;
+      return <details className="tracker-legacy" key={index} defaultOpen={Boolean(hasLegacy)}>
+        <summary>{index === 0 ? "Other notes" : "Additional Markdown"}</summary>
+        <p>Existing text is preserved here. You can keep using it alongside named entries.</p>
+        <MarkdownEditor value={segment.text}
+          onChange={(text) => onChange(updateTrackerSegment(value, segment.start, segment.end, text))}>
+          {(editor) => <>
+            <FormattingToolbar editor={editor} />
+            <EditorContent editor={editor} className="reference-prose tracker-description" />
+          </>}
+        </MarkdownEditor>
+      </details>;
+    })}
+  </div></div>;
 }
 
 function App() {
@@ -1164,7 +1242,10 @@ function App() {
             </div>
           </>
         ) : (
-          <MarkdownReferenceEditor
+          section === "reference" && ["characters", "locations"].includes(referenceKind)
+            ? <TrackerEditor key={`${book.root}:${referenceKind}`} kind={referenceKind}
+                value={referenceText} onChange={changeReference} />
+            : <MarkdownReferenceEditor
             key={`${book.root}:${section}:${section === "reference" ? referenceKind : ""}:${selectedId}`}
             value={section === "reference" ? referenceText : notes}
             onChange={section === "reference" ? changeReference : changeNotes}

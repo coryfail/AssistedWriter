@@ -105,3 +105,19 @@ For a chapter title change, update both `book.json` and the manuscript's first h
 Keep proposed edits, critiques, and research out of chapter manuscript files until the author approves a specific change. Put durable editorial material in `editorial/` or the relevant notes file. The in-app AI saves its reports as JSON in `editorial/`; do not alter those reports to make a change appear approved. The app's exports contain only chapters listed in `book.json`, in order. `notes/`, chapter notes, `editorial/`, `AGENTS.md`, and `exports/` are not manuscript chapters.
 
 Before finishing any file change, verify `book.json` parses, the book and chapter notes remain readable, all referenced files exist, and the chapter headings and order are correct. If the book uses Git, leave committing, branching, pushing, and pulling to the author unless requested.
+
+<!-- assisted-writer-entries-v1 -->
+## Named characters and locations
+
+The app can display any number of named entries in `notes/characters.md` and `notes/locations.md`. Each entry uses this Markdown block, with a unique UUID that stays stable when the name changes:
+
+```markdown
+<!-- assisted-writer-entry:11111111-1111-4111-8111-111111111111 -->
+## Ogee
+
+Description and details about Ogee.
+
+<!-- /assisted-writer-entry -->
+```
+
+Keep each name on one line after `##`. The description may contain ordinary Markdown, including smaller headings. Preserve the marker pair and UUID when updating an entry; add a fresh UUID for a new one. Existing freeform tracker text outside these blocks remains visible in the app as other notes. Do not delete or rewrite it during conversion unless the author asks.

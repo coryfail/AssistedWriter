@@ -140,6 +140,7 @@ test("AI context and story trackers stay readable and respect request scope", as
   const proposed = await book.appendNote(root, "characters", first.id,
     { title: "Mara's worry", content: "Possible fear: the house remembers her." });
   assert.match(proposed.references.characters, /Mara is 31\.[\s\S]*## Mara's worry/);
+  assert.match(proposed.references.characters, /assisted-writer-entry:[a-f0-9-]{36}/);
   assert.match(await fs.readFile(path.join(root, "notes", "characters.md"), "utf8"), /the house remembers her/);
   const limited = buildReviewInput(loaded, { chapterId: first.id, action: "continuity",
     context: { bookNotes: false, chapterNotes: false, bookContext: false,
@@ -183,6 +184,7 @@ test("opening an older book adds reference files and updates agent guidance once
   assert.match(migratedGuide, /chapters\/<stem>\.context\.md/);
   assert.match(migratedGuide, /assisted-writer-brainstorm-v1/);
   assert.match(migratedGuide, /author approves each note separately/);
+  assert.match(migratedGuide, /assisted-writer-entries-v1/);
   await book.readBook(root);
   assert.equal(await fs.readFile(guidePath, "utf8"), migratedGuide);
   assert.equal(await fs.readFile(path.join(root, "book.json"), "utf8"), beforeManifest);
@@ -207,6 +209,7 @@ test("new-book agent instructions describe app-compatible chapter creation", asy
     "first heading matches its manifest title",
     "author approves",
     "assisted-writer-brainstorm-v1",
+    "assisted-writer-entries-v1",
   ]) {
     assert.ok(instructions.includes(required), `Missing guidance: ${required}`);
   }

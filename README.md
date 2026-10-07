@@ -19,7 +19,7 @@ npm run package:mac
 
 The renderer build is placed under `dist/`; packaged Mac apps are placed under `release/`. Local builds without a Developer ID certificate and Apple notarization credentials are for development only and may be blocked by macOS.
 
-Each push to `main` runs the Mac release workflow. It turns the source version (currently `0.3.3`) into a unique prerelease such as `v0.3.3-beta.22`. Pushing a matching version tag such as `v0.3.3` publishes that exact stable release. Both paths build one universal app for Intel and Apple Silicon Macs and publish a DMG, ZIP, update metadata, and SHA-256 checksum file. The workflow keeps each release in draft until all assets are uploaded, so the updater cannot see an incomplete release. A release is published only after code-signature, Gatekeeper, notarization, architecture, DMG, and ZIP checks pass.
+Each push to `main` runs the Mac release workflow. It turns the source version (currently `0.4.0`) into a unique prerelease such as `v0.4.0-beta.22`. Pushing a matching version tag such as `v0.4.0` publishes that exact stable release. Both paths build one universal app for Intel and Apple Silicon Macs and publish a DMG, ZIP, update metadata, and SHA-256 checksum file. The workflow keeps each release in draft until all assets are uploaded, so the updater cannot see an incomplete release. A release is published only after code-signature, Gatekeeper, notarization, architecture, DMG, and ZIP checks pass.
 
 Installed apps can check for the latest signed GitHub release from Settings → App updates. Downloading an update replaces only the app bundle. Book folders stay where the author created them, while recent books and the encrypted API key stay in macOS Application Support and Keychain-backed app data.
 
@@ -51,6 +51,8 @@ book-name/
 You can edit these files outside the app. The app reads the chapter order from `book.json`. Keep each chapter filename and notes filename unique and within `chapters/`.
 The generated `AGENTS.md` documents the manifest schema, chapter and notes paths, Markdown conventions, and the steps an agent must follow to add app-visible chapters.
 When an older book is opened, Assisted Writer creates any missing AI context and story tracker Markdown files and adds current file guidance to its `AGENTS.md`. Existing notes, custom agent instructions, chapter content, and `book.json` entries are preserved.
+
+The Characters and Locations views support any number of named entries. Each entry has a name and a visually formatted Markdown description. Entries remain in their existing tracker Markdown files as clearly marked sections with stable IDs. Older freeform tracker text stays available under **Other notes** so it can be consulted or edited without a forced conversion. The book's `AGENTS.md` explains the entry format to Codex and other agents; existing books receive this guidance when opened.
 
 ## Git for each book
 

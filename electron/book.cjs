@@ -55,6 +55,11 @@ async function migrateBookReferences(root, manifest) {
     const addendum = await fs.readFile(path.join(__dirname, "templates", "book-brainstorm-addendum.md"), "utf8");
     await atomicWrite(guidePath, `${currentGuide.trimEnd()}\n\n${addendum}`);
   }
+  const latestGuide = await readOptional(guidePath);
+  if (!latestGuide.includes("<!-- assisted-writer-entries-v1 -->")) {
+    const addendum = await fs.readFile(path.join(__dirname, "templates", "book-entries-addendum.md"), "utf8");
+    await atomicWrite(guidePath, `${latestGuide.trimEnd()}\n\n${addendum}`);
+  }
 }
 const heading = (title, body) => `# ${title}\n\n${body.trim()}\n`;
 const withoutHeading = (content) =>
@@ -216,7 +221,10 @@ async function appendNote(root, target, chapterId, note) {
     file = notePath(root, chapter);
   } else file = referencePath(root, target);
   const previous = await fs.readFile(file, "utf8");
-  await atomicWrite(file, `${previous.trimEnd()}\n\n## ${title}\n\n${content}\n`);
+  const addition = ["characters", "locations"].includes(target)
+    ? `<!-- assisted-writer-entry:${crypto.randomUUID()} -->\n## ${title}\n\n${content}\n\n<!-- /assisted-writer-entry -->`
+    : `## ${title}\n\n${content}`;
+  await atomicWrite(file, `${previous.trimEnd()}\n\n${addition}\n`);
   return readBook(root);
 }
 

@@ -589,6 +589,35 @@ body {
   height: 0;
   pointer-events: none;
 }
+.tracker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 32px 0 12px;
+  border-top: 1px solid #e6ddd2;
+  padding-top: 20px;
+}
+.tracker-head strong { color: #7b675a; font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; }
+.tracker-head button { display: flex; align-items: center; gap: 5px; border: 0; border-radius: 5px; background: #653d33; color: white; padding: 8px 11px; font-size: 11px; font-weight: 700; }
+.tracker-list { display: grid; gap: 8px; }
+.tracker-list button { display: grid; gap: 5px; width: 100%; text-align: left; border: 1px solid #e5dace; border-radius: 7px; background: #faf7f2; padding: 12px 14px; }
+.tracker-list button.active { border-color: #b18872; background: #f3e9de; }
+.tracker-list strong { font-size: 13px; color: #3d332d; }
+.tracker-list span { font-size: 11px; line-height: 1.45; color: #8b7a6d; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tracker-detail { border: 1px solid #e5dace; border-radius: 8px; background: #fffefa; padding: 18px; margin-top: 18px; }
+.tracker-detail-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.tracker-detail-head strong { font-size: 10px; letter-spacing: 0.15em; color: #8c6d5c; }
+.tracker-detail .tracker-delete { display: flex; align-items: center; gap: 5px; color: #956655; border: 0; background: transparent; font-size: 10px; }
+.tracker-detail > label { display: block; color: #746456; font-size: 11px; font-weight: 700; margin: 12px 0 7px; }
+.tracker-detail > input { width: 100%; border: 1px solid #dcd0c1; border-radius: 5px; background: #fffefa; color: #3d332d; padding: 9px 10px; font-size: 13px; }
+.tracker-detail .editor-toolbar, .tracker-legacy .editor-toolbar { min-height: 44px; padding: 3px 0; gap: 8px; margin-top: 5px; }
+.tracker-detail .tool-group button, .tracker-legacy .tool-group button { width: 29px; height: 29px; }
+.tracker-description, .tracker-description .tiptap { min-height: 145px; }
+.tracker-description { margin-top: 12px; padding: 2px 0; }
+.tracker-legacy { margin-top: 24px; border-top: 1px solid #e5dace; padding-top: 16px; }
+.tracker-legacy summary { cursor: pointer; color: #765c4d; font-size: 12px; font-weight: 700; }
+.tracker-legacy > p { font-family: "DM Sans", sans-serif; font-size: 11px; color: #968b7f; }
 .ai-panel {
   width: 350px;
   flex: none;
