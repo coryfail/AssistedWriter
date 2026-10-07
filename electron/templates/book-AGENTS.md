@@ -82,7 +82,7 @@ The app removes that first heading when loading the editor and writes it back wh
 
 `notes/book.md` and each `chapters/<notesFile>` are separate Markdown documents. They can contain outlines, character facts, chronology, questions, and continuity notes. The chapter notes file may start with `# Notes for <chapter title>`. Notes and editorial reports are excluded from manuscript exports.
 
-`notes/ai-context.md` and `chapters/<manuscript stem>.context.md` hold guidance the author wants the in-app AI to consider. The author can turn either source off for a request. Character, location, timeline, and terminology trackers are Markdown in `notes/`; continuity checks can read them when enabled. For existing books, missing context or tracker files are treated as empty and are created when edited in the app. Keep factual assertions and uncertainties distinct, so a continuity warning can cite evidence rather than guess.
+`notes/ai-context.md` and `chapters/<manuscript stem>.context.md` hold guidance the author wants the in-app AI to consider. The author can turn either source off for a request. Character, location, timeline, and terminology trackers are Markdown in `notes/`; continuity checks can read them when enabled. For existing books, missing context or tracker files are created when the book is opened. Keep factual assertions and uncertainties distinct, so a continuity warning can cite evidence rather than guess.
 
 ## Adding or changing chapters
 
@@ -91,7 +91,7 @@ When the author asks you to create a chapter that should appear in Assisted Writ
 1. Read the current `book.json` immediately before editing it.
 2. Choose an unused manuscript filename and an unused notes filename in `chapters/`. Use matching stems such as `chapter-02.md` and `chapter-02.notes.md`; the exact stem is not important.
 3. Generate a new UUID for `id`. Never reuse or change an existing chapter ID.
-4. Create **both** files. Put `# <chapter title>` and a blank line at the top of the manuscript. Create the chapter notes file even if it is empty apart from its heading. You may also create `<manuscript stem>.context.md` for chapter AI guidance.
+4. Create **both** files. Put `# <chapter title>` and a blank line at the top of the manuscript. Create the chapter notes file even if it is empty apart from its heading. Also create `<manuscript stem>.context.md` for chapter AI guidance.
 5. Add an entry with `id`, `title`, `file`, and `notesFile` to `book.json` at the intended position in `chapters`. Preserve all other entries and metadata.
 6. Check that every listed manuscript and notes file exists, filenames and IDs are unique, and each manuscript's first heading matches its manifest title.
 

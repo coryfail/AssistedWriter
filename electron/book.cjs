@@ -24,6 +24,32 @@ const readOptional = async (file) => {
   try { return await fs.readFile(file, "utf8"); }
   catch (error) { if (error.code === "ENOENT") return ""; throw error; }
 };
+async function writeIfMissing(file, content) {
+  try { await fs.writeFile(file, content, { flag: "wx" }); }
+  catch (error) { if (error.code !== "EEXIST") throw error; }
+}
+async function migrateBookReferences(root, manifest) {
+  await fs.mkdir(path.join(root, "notes"), { recursive: true });
+  await writeIfMissing(contextPath(root), "# AI Context for This Book\n\n");
+  for (const name of referenceNames)
+    await writeIfMissing(referencePath(root, name),
+      `# ${name[0].toUpperCase()}${name.slice(1)}\n\n`);
+  for (const chapter of manifest.chapters)
+    await writeIfMissing(chapterContextPath(root, chapter),
+      `# AI Context for ${chapter.title}\n\n`);
+  const guidePath = path.join(root, "AGENTS.md");
+  const guide = await readOptional(guidePath);
+  if (!guide.trim()) {
+    const template = await fs.readFile(path.join(__dirname, "templates", "book-AGENTS.md"), "utf8");
+    await atomicWrite(guidePath, template);
+  } else if (!guide.includes("<!-- assisted-writer-context-v1 -->") &&
+    !["ai-context.md", "characters.md", "locations.md",
+      "timeline.md", "terminology.md", "<manuscript stem>.context.md"]
+      .every((name) => guide.includes(name))) {
+    const addendum = await fs.readFile(path.join(__dirname, "templates", "book-reference-addendum.md"), "utf8");
+    await atomicWrite(guidePath, `${guide.trimEnd()}\n\n${addendum}`);
+  }
+}
 const heading = (title, body) => `# ${title}\n\n${body.trim()}\n`;
 const withoutHeading = (content) =>
   content.replace(/^# [^\n]*\n(?:\n)?/, "").trim();
@@ -102,6 +128,12 @@ async function createBook(parent, title, author) {
 
 async function readBook(root) {
   const manifest = await loadManifest(root);
+  await Promise.all([
+    fs.access(path.join(root, "notes", "book.md")),
+    ...manifest.chapters.flatMap((chapter) =>
+      [fs.access(chapterPath(root, chapter)), fs.access(notePath(root, chapter))]),
+  ]);
+  await migrateBookReferences(root, manifest);
   const chapters = await Promise.all(
     manifest.chapters.map(async (c) => ({
       ...c,
@@ -258,6 +290,7 @@ module.exports = {
   deleteChapter,
   saveMetadata,
   saveReference,
+  migrateBookReferences,
   approveSuggestion,
   loadManifest,
   withoutHeading,

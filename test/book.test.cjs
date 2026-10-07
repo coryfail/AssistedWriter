@@ -120,7 +120,42 @@ test("AI context and story trackers stay readable and respect request scope", as
   assert.match(limited.input, /Current chapter Markdown body:/);
   await assert.rejects(book.saveReference(root, "../outside", null, "bad"), /Unknown reference type/);
   await fs.rm(path.join(root, "notes", "locations.md"));
-  assert.equal((await book.readBook(root)).references.locations, "");
+  assert.match((await book.readBook(root)).references.locations, /# Locations/);
+});
+
+test("opening an older book adds reference files and updates agent guidance once", async (t) => {
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), "assisted-writer-migrate-"));
+  t.after(() => fs.rm(parent, { recursive: true, force: true }));
+  const root = await book.createBook(parent, "Older Book", "Author");
+  const first = (await book.readBook(root)).chapters[0];
+  const second = (await book.addChapter(root)).chapters[1];
+  const guidePath = path.join(root, "AGENTS.md");
+  const originalGuide = "# My book instructions\n\nKeep the author's custom rules.\n";
+  await fs.writeFile(guidePath, originalGuide);
+  await fs.writeFile(path.join(root, "notes", "characters.md"), "# Characters\n\nMara is 31.\n");
+  await fs.writeFile(path.join(root, "notes", "ai-context.md"), "# Voice\n\nKeep the prose spare.\n");
+  for (const file of ["locations.md", "timeline.md", "terminology.md"])
+    await fs.rm(path.join(root, "notes", file));
+  await fs.writeFile(path.join(root, "chapters", first.file.replace(/\.md$/, ".context.md")),
+    "# First chapter context\n\nKeep the door locked.\n");
+  await fs.rm(path.join(root, "chapters", second.file.replace(/\.md$/, ".context.md")));
+
+  const beforeManifest = await fs.readFile(path.join(root, "book.json"), "utf8");
+  const opened = await book.readBook(root);
+  assert.equal(opened.chapters.length, 2);
+  assert.match(opened.references.characters, /Mara is 31/);
+  assert.match(opened.aiContext, /Keep the prose spare/);
+  assert.match(opened.chapters[0].context, /Keep the door locked/);
+  for (const file of ["locations.md", "timeline.md", "terminology.md"])
+    assert.ok((await fs.readFile(path.join(root, "notes", file), "utf8")).startsWith("# "));
+  assert.match(await fs.readFile(path.join(root, "chapters", second.file.replace(/\.md$/, ".context.md")), "utf8"), /AI Context/);
+  const migratedGuide = await fs.readFile(guidePath, "utf8");
+  assert.ok(migratedGuide.startsWith(originalGuide.trimEnd()));
+  assert.match(migratedGuide, /notes\/characters\.md/);
+  assert.match(migratedGuide, /chapters\/<stem>\.context\.md/);
+  await book.readBook(root);
+  assert.equal(await fs.readFile(guidePath, "utf8"), migratedGuide);
+  assert.equal(await fs.readFile(path.join(root, "book.json"), "utf8"), beforeManifest);
 });
 
 test("new-book agent instructions describe app-compatible chapter creation", async (t) => {
@@ -170,4 +205,5 @@ test("new-book agent instructions describe app-compatible chapter creation", asy
   );
   assert.equal(loaded.chapters[1].body, "A new scene.");
   assert.match(loaded.chapters[1].notes, /Keep the door locked/);
+  assert.equal(await fs.readFile(path.join(root, "AGENTS.md"), "utf8"), instructions);
 });

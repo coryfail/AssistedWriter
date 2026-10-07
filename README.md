@@ -50,6 +50,7 @@ book-name/
 
 You can edit these files outside the app. The app reads the chapter order from `book.json`. Keep each chapter filename and notes filename unique and within `chapters/`.
 The generated `AGENTS.md` documents the manifest schema, chapter and notes paths, Markdown conventions, and the steps an agent must follow to add app-visible chapters.
+When an older book is opened, Assisted Writer creates any missing AI context and story tracker Markdown files and adds current file guidance to its `AGENTS.md`. Existing notes, custom agent instructions, chapter content, and `book.json` entries are preserved.
 
 ## Git for each book
 
