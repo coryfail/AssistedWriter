@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*.*.*'
 
 permissions:
   contents: write
@@ -98,15 +100,23 @@ jobs:
           chmod 600 "$key_path"
           echo "APPLE_API_KEY=$key_path" >> "$GITHUB_ENV"
 
-      - name: Set prerelease version
+      - name: Set release version
         id: version
         run: |
           base_version="$(node -p 'require("./package.json").version')"
-          release_version="${base_version}-beta.${GITHUB_RUN_NUMBER}"
-          npm version "$release_version" --no-git-tag-version --ignore-scripts
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            [[ "$GITHUB_REF_NAME" == "v$base_version" ]] || { echo "Tag must match package.json version." >&2; exit 1; }
+            release_version="$base_version"
+            prerelease=false
+          else
+            release_version="${base_version}-beta.${GITHUB_RUN_NUMBER}"
+            prerelease=true
+            npm version "$release_version" --no-git-tag-version --ignore-scripts
+          fi
           echo "base=$base_version" >> "$GITHUB_OUTPUT"
           echo "version=$release_version" >> "$GITHUB_OUTPUT"
           echo "tag=v$release_version" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
 
       - name: Build, sign, and notarize universal Mac app
         env:
@@ -154,16 +164,19 @@ jobs:
           sed -i '' 's/Assisted-Writer/Assisted.Writer/g' release/latest*.yml
           (cd release && shasum -a 256 *.dmg *-mac.zip > SHA256SUMS.txt)
 
-      - name: Publish versioned GitHub prerelease
+      - name: Publish versioned GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
         run: |
+          release_flags=(--target "$GITHUB_SHA" --title "Assisted Writer $RELEASE_VERSION" \
+            --notes "Universal Mac build for Intel and Apple Silicon from commit $GITHUB_SHA. Signed with Developer ID and notarized by Apple.")
+          if [[ "$PRERELEASE" == "true" ]]; then
+            release_flags+=(--prerelease --latest=false)
+          else
+            release_flags+=(--verify-tag --latest)
+          fi
           gh release create "$RELEASE_TAG" release/*.dmg release/*-mac.zip release/SHA256SUMS.txt \
-            release/latest*.yml \
-            --target "$GITHUB_SHA" \
-            --title "Assisted Writer $RELEASE_VERSION" \
-            --notes "Universal Mac build for Intel and Apple Silicon from commit $GITHUB_SHA. Signed with Developer ID and notarized by Apple." \
-            --prerelease \
-            --latest=false
+            release/latest*.yml "${release_flags[@]}"
