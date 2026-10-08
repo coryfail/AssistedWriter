@@ -49,7 +49,7 @@ Keep this as valid UTF-8 JSON with no comments or trailing commas. Preserve exis
   "chapters": [
     {
       "id": "c614a0e4-9056-4d33-a7df-e4d3ad658f35",
-      "title": "Chapter One",
+      "title": "Chapter 1",
       "file": "chapter-01.md",
       "notesFile": "chapter-01.notes.md"
     }
@@ -65,7 +65,7 @@ Keep this as valid UTF-8 JSON with no comments or trailing commas. Preserve exis
 A chapter manuscript is UTF-8 Markdown. Its first line must be a level-one heading matching the entry's `title`, followed by a blank line and the chapter body:
 
 ```markdown
-# Chapter One
+# Chapter 1
 
 The story begins here.
 
@@ -82,10 +82,13 @@ The app removes that first heading when loading the editor and writes it back wh
 
 `notes/book.md` and each `chapters/<notesFile>` are separate Markdown documents. They can contain outlines, character facts, chronology, questions, and continuity notes. The chapter notes file may start with `# Notes for <chapter title>`. Notes and editorial reports are excluded from manuscript exports.
 
-`notes/ai-context.md` and `chapters/<manuscript stem>.context.md` hold guidance the author wants the in-app AI to consider. The author can turn either source off for a request. Character, location, timeline, and terminology trackers are Markdown in `notes/`; brainstorming and continuity checks can read them when enabled. For existing books, missing context or tracker files are created when the book is opened. Keep factual assertions and uncertainties distinct, so a continuity warning can cite evidence rather than guess.
+`notes/ai-context.md` and `chapters/<manuscript stem>.context.md` hold guidance the author wants the in-app AI to consider. The in-app assistant selects relevant sources automatically. Character, location, timeline, and terminology trackers are Markdown in `notes/`; the assistant can read them for brainstorming, review, and continuity checks. For existing books, missing context or tracker files are created when the book is opened. Keep factual assertions and uncertainties distinct, so a continuity warning can cite evidence rather than guess.
 
 <!-- assisted-writer-brainstorm-v1 -->
-The in-app assistant can propose notes for `notes/book.md`, the current chapter's `notesFile`, or one of the four tracker files. These ideas are optional until the author approves each one; approval appends a `##` heading and Markdown content to the chosen file. When brainstorming outside the app, keep proposed ideas distinct from established story facts and let the author choose what becomes a durable note.
+The in-app assistant can propose up to eight notes for `notes/book.md`, the current chapter's `notesFile`, or the four tracker files. It chooses a destination for each note based on the discussion. These ideas are optional until the author approves each one; approval appends a `##` heading and Markdown content to the chosen file. When brainstorming outside the app, keep proposed ideas distinct from established story facts and let the author choose what becomes a durable note.
+
+<!-- assisted-writer-assistant-v2 -->
+The in-app assistant reads relevant book files without source checkboxes. It can suggest notes during a conversation or when the author asks explicitly, but conversation alone never changes book files. The author approves or dismisses each proposed note separately. For an existing marked character or location entry, approval can add a Markdown detail inside that entry while preserving its UUID.
 
 ## Adding or changing chapters
 

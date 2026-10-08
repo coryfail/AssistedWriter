@@ -7,7 +7,40 @@ const crypto = require("node:crypto");
 const JSZip = require("jszip");
 const book = require("../electron/book.cjs");
 const { exportBook } = require("../electron/export.cjs");
-const { buildReviewInput } = require("../electron/ai.cjs");
+const { buildReviewInput, normalizeProposedNotes } = require("../electron/ai.cjs");
+
+test("book details and default chapter titles stay consistent", async (t) => {
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), "assisted-writer-details-"));
+  t.after(() => fs.rm(parent, { recursive: true, force: true }));
+  const root = await book.createBook(parent, "Working Title", "First Author");
+  const initial = await book.readBook(root);
+  assert.equal(initial.chapters[0].title, "Chapter 1");
+  const next = await book.addChapter(root);
+  assert.deepEqual(next.chapters.map((chapter) => chapter.title), ["Chapter 1", "Chapter 2"]);
+  const updated = await book.saveMetadata(root, { title: "Final Title", author: "Second Author" });
+  assert.equal(updated.manifest.title, "Final Title");
+  assert.equal(updated.manifest.author, "Second Author");
+  await assert.rejects(book.saveMetadata(root, { title: " ", author: "Someone" }), /title is required/);
+  assert.equal((await book.readBook(root)).manifest.author, "Second Author");
+});
+
+test("opening an older book updates only its default Chapter One headings", async (t) => {
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), "assisted-writer-legacy-title-"));
+  t.after(() => fs.rm(parent, { recursive: true, force: true }));
+  const root = await book.createBook(parent, "Old Book", "Author");
+  const manifestPath = path.join(root, "book.json");
+  const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+  manifest.chapters[0].title = "Chapter One";
+  await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+  await fs.writeFile(path.join(root, "chapters", "chapter-01.md"), "# Chapter One\n\nOriginal prose.\n");
+  await fs.writeFile(path.join(root, "chapters", "chapter-01.notes.md"), "# Notes for Chapter One\n\nOriginal notes.\n");
+  await fs.writeFile(path.join(root, "chapters", "chapter-01.context.md"), "# AI Context for Chapter One\n\nOriginal context.\n");
+  const loaded = await book.readBook(root);
+  assert.equal(loaded.chapters[0].title, "Chapter 1");
+  assert.equal(loaded.chapters[0].body, "Original prose.");
+  assert.equal(loaded.chapters[0].notes, "# Notes for Chapter 1\n\nOriginal notes.\n");
+  assert.equal(loaded.chapters[0].context, "# AI Context for Chapter 1\n\nOriginal context.\n");
+});
 
 test("readable book files, approved edits, and publication exports", async (t) => {
   const parent = await fs.mkdtemp(
@@ -125,23 +158,28 @@ test("AI context and story trackers stay readable and respect request scope", as
   assert.match(full.input, /At dawn/);
   const brainstormInput = buildReviewInput(loaded,
     { chapterId: first.id, action: "brainstorm", noteRequested: true,
-      noteTarget: "characters", question: "What motivates Mara?",
+      question: "What motivates Mara?",
       history: [{ role: "user", text: "Maybe Mara lied about the house." },
         { role: "assistant", text: "What would she gain?" }] }, "instructions");
-  assert.match(brainstormInput.input, /Proposed note destination: characters/);
+  assert.match(brainstormInput.input, /Author explicitly requested notes: yes/);
   assert.match(brainstormInput.input, /Mara is 31/);
   assert.match(brainstormInput.input, /Maybe Mara lied about the house/);
   assert.match(brainstormInput.input, /What motivates Mara\?/);
   const conversationInput = buildReviewInput(loaded,
     { chapterId: first.id, action: "brainstorm", noteRequested: false,
       question: "Could this be a family secret?" }, "instructions");
-  assert.match(conversationInput.input, /Draft a note now: no/);
+  assert.match(conversationInput.input, /Author explicitly requested notes: no/);
   assert.doesNotMatch(conversationInput.input, /Proposed note destination/);
   const proposed = await book.appendNote(root, "characters", first.id,
     { title: "Mara's worry", content: "Possible fear: the house remembers her." });
   assert.match(proposed.references.characters, /Mara is 31\.[\s\S]*## Mara's worry/);
   assert.match(proposed.references.characters, /assisted-writer-entry:[a-f0-9-]{36}/);
   assert.match(await fs.readFile(path.join(root, "notes", "characters.md"), "utf8"), /the house remembers her/);
+  const entryId = proposed.references.characters.match(/assisted-writer-entry:([a-f0-9-]{36})/)[1];
+  const enriched = await book.appendNote(root, "characters", first.id,
+    { entryId, title: "Why she hides it", content: "She wants to protect her brother." });
+  assert.equal((enriched.references.characters.match(/assisted-writer-entry:[a-f0-9-]{36}/g) || []).length, 1);
+  assert.match(enriched.references.characters, /## Mara's worry[\s\S]*### Why she hides it[\s\S]*protect her brother/);
   const limited = buildReviewInput(loaded, { chapterId: first.id, action: "continuity",
     context: { bookNotes: false, chapterNotes: false, bookContext: false,
       chapterContext: false, trackers: false, otherChapters: false } }, "instructions");
@@ -150,6 +188,17 @@ test("AI context and story trackers stay readable and respect request scope", as
   await assert.rejects(book.saveReference(root, "../outside", null, "bad"), /Unknown reference type/);
   await fs.rm(path.join(root, "notes", "locations.md"));
   assert.match((await book.readBook(root)).references.locations, /# Locations/);
+});
+
+test("assistant note proposals choose valid destinations and stay suggestions", () => {
+  const suggestions = [
+    { target: "characters", entryId: "", title: "Mara", content: "She knows the river." },
+    { target: "timeline", entryId: "", title: "Arrival", content: "June 4." },
+    { target: "../outside", entryId: "", title: "Bad", content: "No." },
+    { target: "book", entryId: "", title: "", content: "Missing title." },
+  ];
+  assert.deepEqual(normalizeProposedNotes(suggestions, "brainstorm"), suggestions.slice(0, 2));
+  assert.deepEqual(normalizeProposedNotes(suggestions, "chapter"), []);
 });
 
 test("opening an older book adds reference files and updates agent guidance once", async (t) => {
@@ -185,6 +234,8 @@ test("opening an older book adds reference files and updates agent guidance once
   assert.match(migratedGuide, /assisted-writer-brainstorm-v1/);
   assert.match(migratedGuide, /author approves each note separately/);
   assert.match(migratedGuide, /assisted-writer-entries-v1/);
+  assert.match(migratedGuide, /assisted-writer-assistant-v2/);
+  assert.match(migratedGuide, /author approves or dismisses each note separately/);
   await book.readBook(root);
   assert.equal(await fs.readFile(guidePath, "utf8"), migratedGuide);
   assert.equal(await fs.readFile(path.join(root, "book.json"), "utf8"), beforeManifest);
@@ -210,6 +261,7 @@ test("new-book agent instructions describe app-compatible chapter creation", asy
     "author approves",
     "assisted-writer-brainstorm-v1",
     "assisted-writer-entries-v1",
+    "assisted-writer-assistant-v2",
   ]) {
     assert.ok(instructions.includes(required), `Missing guidance: ${required}`);
   }
@@ -235,7 +287,7 @@ test("new-book agent instructions describe app-compatible chapter creation", asy
   const loaded = await book.readBook(root);
   assert.deepEqual(
     loaded.chapters.map((item) => item.title),
-    ["Chapter One", "The Second Door"],
+    ["Chapter 1", "The Second Door"],
   );
   assert.equal(loaded.chapters[1].body, "A new scene.");
   assert.match(loaded.chapters[1].notes, /Keep the door locked/);

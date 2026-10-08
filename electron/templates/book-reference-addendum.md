@@ -14,6 +14,6 @@ chapters/<stem>.context.md  AI context for the chapter whose manuscript is <stem
 
 The chapter context filename comes from the `file` value in the relevant `book.json` chapter entry: remove the final `.md` and add `.context.md`. `book.json` remains the authoritative chapter list and order. When adding a chapter, create its manuscript, notes file, context file, and manifest entry together. Keep all chapter IDs and existing filenames stable when editing an existing chapter.
 
-The in-app AI reads book notes, chapter notes, book context, chapter context, story trackers, and other chapters only when the author enables those sources for a request. Story trackers are used for brainstorming and continuity checks; other chapters are used for continuity checks. Agents should consult the relevant files directly when the author asks for planning or continuity work. Keep facts separate from uncertainty and cite the source of any suspected contradiction.
+The in-app AI selects relevant book notes, chapter notes, context, story trackers, and other chapters automatically for each request. Agents should consult the relevant files directly when the author asks for planning or continuity work. Keep facts separate from uncertainty and cite the source of any suspected contradiction.
 
 These context and tracker files are app-visible reference material. They are excluded from manuscript exports. Preserve the author's existing text in them and in this `AGENTS.md`; propose manuscript changes for the author to approve.

@@ -60,6 +60,11 @@ async function migrateBookReferences(root, manifest) {
     const addendum = await fs.readFile(path.join(__dirname, "templates", "book-entries-addendum.md"), "utf8");
     await atomicWrite(guidePath, `${latestGuide.trimEnd()}\n\n${addendum}`);
   }
+  const assistantGuide = await readOptional(guidePath);
+  if (!assistantGuide.includes("<!-- assisted-writer-assistant-v2 -->")) {
+    const addendum = await fs.readFile(path.join(__dirname, "templates", "book-assistant-addendum.md"), "utf8");
+    await atomicWrite(guidePath, `${assistantGuide.trimEnd()}\n\n${addendum}`);
+  }
 }
 const heading = (title, body) => `# ${title}\n\n${body.trim()}\n`;
 const withoutHeading = (content) =>
@@ -106,7 +111,7 @@ async function createBook(parent, title, author) {
   await fs.mkdir(path.join(root, "exports"));
   const chapter = {
     id: crypto.randomUUID(),
-    title: "Chapter One",
+    title: "Chapter 1",
     file: "chapter-01.md",
     notesFile: "chapter-01.notes.md",
   };
@@ -128,7 +133,7 @@ async function createBook(parent, title, author) {
   await fs.writeFile(contextPath(root), "# AI Context for This Book\n\n");
   for (const name of referenceNames)
     await fs.writeFile(referencePath(root, name), `# ${name[0].toUpperCase()}${name.slice(1)}\n\n`);
-  await fs.writeFile(chapterContextPath(root, chapter), "# AI Context for Chapter One\n\n");
+  await fs.writeFile(chapterContextPath(root, chapter), "# AI Context for Chapter 1\n\n");
   const agentGuide = await fs.readFile(
     path.join(__dirname, "templates", "book-AGENTS.md"),
     "utf8",
@@ -139,6 +144,25 @@ async function createBook(parent, title, author) {
 
 async function readBook(root) {
   const manifest = await loadManifest(root);
+  // Earlier versions called the first default chapter "Chapter One" but used
+  // numerals for every chapter added afterward. Update only that default title.
+  const legacyFirst = manifest.chapters.find((chapter) =>
+    chapter.file === "chapter-01.md" && chapter.title === "Chapter One");
+  if (legacyFirst &&
+    (await fs.readFile(chapterPath(root, legacyFirst), "utf8")).startsWith("# Chapter One\n")) {
+    const chapter = legacyFirst;
+    for (const [file, oldHeading, newHeading] of [
+      [chapterPath(root, chapter), "# Chapter One\n", "# Chapter 1\n"],
+      [notePath(root, chapter), "# Notes for Chapter One\n", "# Notes for Chapter 1\n"],
+      [chapterContextPath(root, chapter), "# AI Context for Chapter One\n", "# AI Context for Chapter 1\n"],
+    ]) {
+      const content = await readOptional(file);
+      if (content.startsWith(oldHeading))
+        await atomicWrite(file, newHeading + content.slice(oldHeading.length));
+    }
+    chapter.title = "Chapter 1";
+    await writeJson(manifestPath(root), manifest);
+  }
   await Promise.all([
     fs.access(path.join(root, "notes", "book.md")),
     ...manifest.chapters.flatMap((chapter) =>
@@ -221,6 +245,20 @@ async function appendNote(root, target, chapterId, note) {
     file = notePath(root, chapter);
   } else file = referencePath(root, target);
   const previous = await fs.readFile(file, "utf8");
+  if (note?.entryId) {
+    if (!["characters", "locations"].includes(target) ||
+      !/^[a-f0-9-]{36}$/.test(note.entryId))
+      throw new Error("This note does not identify a valid tracker entry.");
+    const marker = `<!-- assisted-writer-entry:${note.entryId} -->`;
+    const start = previous.indexOf(marker);
+    const closeMarker = "<!-- /assisted-writer-entry -->";
+    const close = previous.indexOf(closeMarker, start + marker.length);
+    const nextEntry = previous.indexOf("<!-- assisted-writer-entry:", start + marker.length);
+    if (start < 0 || close < 0 || (nextEntry >= 0 && nextEntry < close))
+      throw new Error("The tracker entry changed. Review the proposal before saving it.");
+    await atomicWrite(file, `${previous.slice(0, close).trimEnd()}\n\n### ${title}\n\n${content}\n\n${previous.slice(close)}`);
+    return readBook(root);
+  }
   const addition = ["characters", "locations"].includes(target)
     ? `<!-- assisted-writer-entry:${crypto.randomUUID()} -->\n## ${title}\n\n${content}\n\n<!-- /assisted-writer-entry -->`
     : `## ${title}\n\n${content}`;
@@ -258,7 +296,9 @@ async function deleteChapter(root, id) {
 
 async function saveMetadata(root, values) {
   const manifest = await loadManifest(root);
-  manifest.title = String(values.title || "").trim() || manifest.title;
+  const title = String(values?.title || "").trim();
+  if (!title) throw new Error("Book title is required.");
+  manifest.title = title;
   manifest.author = String(values.author || "").trim();
   await writeJson(manifestPath(root), manifest);
   return readBook(root);

@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
+import { MarkdownDisplay } from "./markdown-display.mjs";
 import { addTrackerEntry, deleteTrackerEntry, parseTracker,
   updateTrackerEntry, updateTrackerSegment } from "./tracker.mjs";
 import {
@@ -53,6 +54,14 @@ const countWords = (value) =>
       .trim()
       .match(/\S+/g) || []
   ).length;
+const noteDestinationLabels = {
+  book: "Book notes",
+  chapter: "Chapter notes",
+  characters: "Characters",
+  locations: "Locations",
+  timeline: "Timeline",
+  terminology: "Terminology",
+};
 
 function FormattingToolbar({ editor, hint }) {
   return <div className="editor-toolbar">
@@ -212,20 +221,19 @@ function App() {
   const [notes, setNotes] = useState("");
   const [referenceKind, setReferenceKind] = useState("book-context");
   const [referenceText, setReferenceText] = useState("");
-  const [aiContext, setAiContext] = useState({ bookNotes: true, chapterNotes: true,
-    bookContext: true, chapterContext: true, trackers: true, otherChapters: true });
-  const [question, setQuestion] = useState("");
   const [brainstormInput, setBrainstormInput] = useState("");
   const [brainstormMessages, setBrainstormMessages] = useState([]);
-  const [brainstormBusy, setBrainstormBusy] = useState(false);
-  const [noteTarget, setNoteTarget] = useState("book");
+  const [aiPending, setAiPending] = useState(null);
   const [result, setResult] = useState(null);
+  const [resultRevision, setResultRevision] = useState(0);
   const [busy, setBusy] = useState(false);
   const [saveState, setSaveState] = useState("Saved");
   const [toast, setToast] = useState("");
   const [modal, setModal] = useState(null);
   const [newTitle, setNewTitle] = useState("");
   const [newAuthor, setNewAuthor] = useState("");
+  const [bookTitle, setBookTitle] = useState("");
+  const [bookAuthor, setBookAuthor] = useState("");
   const [keyInput, setKeyInput] = useState("");
   const [hasKey, setHasKey] = useState(false);
   const [update, setUpdate] = useState({ status: "idle" });
@@ -242,11 +250,14 @@ function App() {
   const rootRef = useRef(null);
   const timer = useRef(null);
   const notesTimer = useRef(null);
-  const brainstormThreadRef = useRef(null);
+  const brainstormLastMessageRef = useRef(null);
+  const reviewResultRef = useRef(null);
   useEffect(() => {
-    if (brainstormThreadRef.current)
-      brainstormThreadRef.current.scrollTop = brainstormThreadRef.current.scrollHeight;
+    brainstormLastMessageRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [brainstormMessages.length]);
+  useEffect(() => {
+    if (resultRevision) reviewResultRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [resultRevision]);
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [2, 3] } }),
@@ -370,6 +381,7 @@ function App() {
     if (!hasKey) { setModal("settings"); return; }
     setGitBusy(true);
     setGitMessageBusy(true);
+    setAiPending("Drafting your commit message…");
     try {
       await flush();
       const draft = await api.generateCommitMessage(book.root, gitSelected);
@@ -378,7 +390,7 @@ function App() {
         ? "AI draft ready. Large diffs were shortened; review the message before committing."
         : "AI draft ready. Review it before committing.");
     } catch (error) { announce(error.message); }
-    finally { setGitBusy(false); setGitMessageBusy(false); }
+    finally { setGitBusy(false); setGitMessageBusy(false); setAiPending(null); }
   }
 
   function announce(message) {
@@ -571,6 +583,27 @@ function App() {
     }
   }
 
+  function editBookDetails() {
+    setBookTitle(book.manifest.title);
+    setBookAuthor(book.manifest.author || "");
+    setModal("book-details");
+  }
+
+  async function saveBookDetails() {
+    try {
+      await flush();
+      const data = await api.saveMetadata(book.root, {
+        title: bookTitle,
+        author: bookAuthor,
+      });
+      setBook(data);
+      setModal(null);
+      announce("Book details saved.");
+    } catch (error) {
+      announce(error.message);
+    }
+  }
+
   async function openBook(path) {
     try {
       showBook(path ? await api.loadBook(path) : await api.openBook());
@@ -649,27 +682,30 @@ function App() {
       setModal("settings");
       return;
     }
+    setPanelOpen(true);
+    setSidePanel(action === "editor" ? "editor" : "assist");
+    setAiPending(action === "ask" ? "Thinking through your question…"
+      : action === "continuity" ? "Checking your story's continuity…"
+      : action === "editor" ? "Editing your chapter…" : "Reviewing your chapter…");
     try {
       await flush();
       setBusy(true);
       setResult(null);
-      setPanelOpen(true);
       const { from, to } = editor.state.selection;
       const selection = section === "write" ? editor.state.doc.textBetween(from, to, "\n") : "";
       const response = await api.review(book.root, {
         action,
         chapterId: selectedId,
         selection,
-        question,
-        noteTarget,
-        context: aiContext,
+        question: "",
       });
       setResult(response);
-      setSidePanel(action === "editor" ? "editor" : "assist");
+      setResultRevision((value) => value + 1);
     } catch (error) {
       announce(error.message);
     } finally {
       setBusy(false);
+      setAiPending(null);
     }
   }
 
@@ -681,10 +717,12 @@ function App() {
       setModal("settings");
       return;
     }
+    setPanelOpen(true);
+    setSidePanel("assist");
+    setAiPending(noteRequested ? "Thinking through a note with you…" : "Thinking through your idea…");
     try {
       await flush();
       setBusy(true);
-      setBrainstormBusy(true);
       setResult(null);
       const { from, to } = editor.state.selection;
       const selection = section === "write" ? editor.state.doc.textBetween(from, to, "\n") : "";
@@ -695,19 +733,17 @@ function App() {
         selection,
         question: userText,
         noteRequested,
-        noteTarget,
         history: brainstormMessages.map((message) => ({
           role: message.role,
           text: message.text + (message.notes?.length
             ? `\nProposed note: ${message.notes.map((note) => `${note.title}: ${note.content}`).join("; ")}`
             : ""),
         })),
-        context: aiContext,
       });
       setBrainstormMessages((previous) => [...previous,
         { id: crypto.randomUUID(), role: "user", text: userText },
         { id: crypto.randomUUID(), role: "assistant", text: response.summary,
-          notes: response.notes, noteTarget: response.noteTarget,
+          notes: response.notes,
           chapterId: response.chapterId },
       ]);
       setBrainstormInput("");
@@ -716,14 +752,15 @@ function App() {
       announce(error.message);
     } finally {
       setBusy(false);
-      setBrainstormBusy(false);
+      setAiPending(null);
     }
   }
 
-  async function addProposedNote(note, messageId, index, target, chapterId) {
+  async function addProposedNote(note, messageId, index, chapterId) {
     try {
       await flush();
       setBusy(true);
+      const target = note.target;
       const updated = await api.appendNote(book.root, target, chapterId, note);
       setBook(updated);
       if (target === "book" && section === "book-notes")
@@ -809,6 +846,9 @@ function App() {
             AW<span>✦</span>
           </div>
           <span>ASSISTED WRITER</span>
+          <button className="welcome-settings" onClick={() => setModal("settings")}>
+            <Settings2 size={17} /> Settings
+          </button>
         </div>
         <main className="welcome-main">
           <div className="eyebrow">YOUR STORIES, YOUR WORDS</div>
@@ -890,6 +930,24 @@ function App() {
               >
                 Create book <Plus size={17} />
               </button>
+            </>
+          ) : modal === "book-details" ? (
+            <>
+              <div className="eyebrow">BOOK DETAILS</div>
+              <h2>Edit this book</h2>
+              <p>Update the title and author shown in the app and book exports.</p>
+              <label>
+                Book title
+                <input autoFocus value={bookTitle}
+                  onChange={(event) => setBookTitle(event.target.value)} />
+              </label>
+              <label>
+                Author name
+                <input value={bookAuthor}
+                  onChange={(event) => setBookAuthor(event.target.value)} />
+              </label>
+              <button className="primary full" disabled={!bookTitle.trim()}
+                onClick={saveBookDetails}>Save book details <Check size={17} /></button>
             </>
           ) : (
             <>
@@ -1004,7 +1062,11 @@ function App() {
           </div>
         </div>
         <div className="book-identity">
-          <span className="eyebrow">CURRENT MANUSCRIPT</span>
+          <div className="book-identity-top">
+            <span className="eyebrow">CURRENT MANUSCRIPT</span>
+            <button title="Edit book title and author" aria-label="Edit book title and author"
+              onClick={editBookDetails}><PenLine size={15} /></button>
+          </div>
           <h2>{book.manifest.title}</h2>
           <p>{book.manifest.author || "Author name not set"}</p>
         </div>
@@ -1258,7 +1320,7 @@ function App() {
               ? referenceKind.split("-").map((part) => part[0].toUpperCase() + part.slice(1)).join(" ")
               : section === "book-notes" ? "Book notes" : `${current?.title} notes`}
             description={section === "reference"
-              ? "Readable Markdown shared with Codex. Choose which sources the in-app AI reads in its panel."
+              ? "Readable Markdown shared with Codex and available to the in-app assistant when relevant."
               : section === "book-notes"
                 ? "Characters, world details, ideas, and anything you want the assistant or Codex to remember."
                 : "Plans, questions, continuity details, and reminders for this chapter."}
@@ -1266,7 +1328,8 @@ function App() {
         )}
       </main>
       {panelOpen && (
-        <aside className={`ai-panel ${sidePanel === "git" ? "git-panel" : ""}`}>
+        <aside className={`ai-panel ${sidePanel === "git" ? "git-panel" : ""}`}
+          aria-busy={Boolean(aiPending)}>
           <div className="ai-panel-head">
             <div className="ai-heading">
               <span className="ai-spark">
@@ -1565,25 +1628,20 @@ function App() {
               </div>
             ) : sidePanel === "assist" ? (
               <>
-                <div className="ai-intro">
-                  <div className="intro-icon">
-                    <Sparkles size={22} />
-                  </div>
-                  <h4>A second pair of eyes, when you want one.</h4>
-                  <p>
-                    Select a passage or work with the whole chapter. Your
-                    manuscript stays yours.
-                  </p>
+                <div className="assistant-intro">
+                  <span className="eyebrow">WRITING PARTNER</span>
+                  <h4>Talk through your story.</h4>
+                  <p>Ask a question, test an idea, or decide what belongs in your notes.</p>
                 </div>
-                <div className="prompt-actions">
+                <div className="prompt-actions assistant-tools">
                   <button
                     onClick={() => runReview("chapter")}
                     disabled={busy || section !== "write"}
                   >
                     <SearchCheck size={18} />
                     <span>
-                      <strong>Review this chapter</strong>
-                      <small>Pacing, clarity, character, repetition</small>
+                      <strong>Chapter review</strong>
+                      <small>Pacing and clarity</small>
                     </span>
                   </button>
                   <button
@@ -1592,79 +1650,51 @@ function App() {
                   >
                     <BookOpen size={18} />
                     <span>
-                      <strong>Check continuity</strong>
-                      <small>Compare notes and other chapters</small>
+                      <strong>Continuity</strong>
+                      <small>Names, dates, details</small>
                     </span>
                   </button>
                 </div>
                 <div className="brainstorm-box">
                   <div className="brainstorm-heading">
-                    <label>AI BRAINSTORM</label>
+                    <label>CONVERSATION</label>
                     {brainstormMessages.length > 0 && <button className="brainstorm-clear"
                       disabled={busy} onClick={() => setBrainstormMessages([])}>New conversation</button>}
                   </div>
-                  <p>Tell the assistant what you are thinking. Explore the idea together before making a note.</p>
+                  {brainstormMessages.length === 0 && <div className="brainstorm-empty">
+                    <MessageCircle size={20} />
+                    <p>What are you working through? The assistant will use your book and suggest notes when a detail is ready to keep.</p>
+                  </div>}
                   {brainstormMessages.length > 0 && <div className="brainstorm-thread"
-                    ref={brainstormThreadRef} aria-label="Brainstorm conversation">
-                    {brainstormMessages.map((message) => <div key={message.id}
+                    aria-label="Brainstorm conversation">
+                    {brainstormMessages.map((message, index) => <div key={message.id}
+                      ref={index === brainstormMessages.length - 1 ? brainstormLastMessageRef : null}
                       className={`brainstorm-message ${message.role}`}>
                       <strong>{message.role === "user" ? "You" : "Assistant"}</strong>
-                      <div className="brainstorm-text">{message.text}</div>
-                      {message.notes?.map((note, i) => <div className="brainstorm-note" key={`${i}-${note.title}`}>
-                        <strong>Proposed note · {message.noteTarget === "chapter" ? "chapter" : message.noteTarget}</strong>
+                      <MarkdownDisplay text={message.text} className="brainstorm-text" />
+                      {message.notes?.map((note, i) => {
+                        const existingEntry = note.entryId && ["characters", "locations"].includes(note.target)
+                          ? parseTracker(book.references?.[note.target] || "").entries.find((entry) => entry.id === note.entryId)
+                          : null;
+                        return <div className="brainstorm-note" key={`${i}-${note.title}`}>
+                        <strong>{note.entryId && !existingEntry ? "Entry changed · dismiss this suggestion" : existingEntry
+                          ? `Update ${existingEntry.name} · ${noteDestinationLabels[note.target]}`
+                          : `Suggested for ${noteDestinationLabels[note.target] || "notes"}`}</strong>
                         <b>{note.title}</b>
-                        <div className="note-content">{note.content}</div>
+                        <MarkdownDisplay text={note.content} className="note-content" />
                         <div className="suggestion-actions">
-                          <button className="apply" disabled={busy} onClick={() =>
-                            addProposedNote(note, message.id, i, message.noteTarget, message.chapterId)}>
-                            <Check size={14} /> Add note
+                          <button className="apply" disabled={busy || Boolean(note.entryId && !existingEntry)} onClick={() =>
+                            addProposedNote(note, message.id, i, message.chapterId)}>
+                            <Check size={14} /> Approve & save
                           </button>
                           <button disabled={busy} onClick={() => setBrainstormMessages((previous) => previous.map((item) =>
                             item.id === message.id ? { ...item, notes: item.notes.filter((_, n) => n !== i) } : item))}>
                             <X size={14} /> Dismiss
                           </button>
                         </div>
-                      </div>)}
+                      </div>; })}
                     </div>)}
                   </div>}
-                  <textarea value={brainstormInput} onChange={(event) => setBrainstormInput(event.target.value)}
-                    placeholder="I think my protagonist is hiding something, but I’m not sure why…"
-                    disabled={busy} aria-label="Your brainstorm message" />
-                  <div className="brainstorm-send-actions">
-                    <button onClick={() => sendBrainstorm(false)} disabled={busy || !brainstormInput.trim()}>
-                      <Send size={15} /> Send
-                    </button>
-                    <button className="secondary" onClick={() => sendBrainstorm(true)}
-                      disabled={busy || (!brainstormInput.trim() && !brainstormMessages.length)}>
-                      <NotebookPen size={15} /> Propose a note
-                    </button>
-                  </div>
-                  <label htmlFor="brainstorm-target">SAVE PROPOSED NOTE IN</label>
-                  <select id="brainstorm-target" value={noteTarget}
-                    onChange={(event) => setNoteTarget(event.target.value)}>
-                    <option value="book">Book notes</option>
-                    <option value="chapter">Current chapter notes</option>
-                    <option value="characters">Characters tracker</option>
-                    <option value="locations">Locations tracker</option>
-                    <option value="timeline">Timeline tracker</option>
-                    <option value="terminology">Terminology tracker</option>
-                  </select>
-                  <small>Conversation alone saves no notes. You approve each proposed note.</small>
-                </div>
-                <p className="scope-preview">Choose the sources for the next AI request below.</p>
-                <div className="ask-box">
-                  <label>QUICK CHAPTER QUESTION</label>
-                  <textarea
-                    value={question}
-                    onChange={(event) => setQuestion(event.target.value)}
-                    placeholder="What isn't working in this scene?"
-                  />
-                  <button
-                    onClick={() => runReview("ask")}
-                    disabled={busy || !question.trim() || section !== "write"}
-                  >
-                    <Send size={16} /> Ask assistant
-                  </button>
                 </div>
               </>
             ) : (
@@ -1703,28 +1733,10 @@ function App() {
                     <Check size={15} /> Reports saved as readable JSON
                   </div>
                 </div>
-                <p className="scope-preview">Choose the sources for the next AI request below.</p>
               </>
             )}
-            {sidePanel !== "git" && <div className="ai-context-controls">
-              <strong>AI reads</strong>
-              {[["bookNotes", "Book notes"], ["chapterNotes", "Chapter notes"],
-                ["bookContext", "Book context"], ["chapterContext", "Chapter context"],
-                ["trackers", "Story trackers (continuity and brainstorming)"], ["otherChapters", "Other chapters (continuity)"],
-              ].map(([key, label]) => <label key={key}>
-                <input type="checkbox" checked={aiContext[key]} onChange={(event) =>
-                  setAiContext((prev) => ({ ...prev, [key]: event.target.checked }))} /> {label}
-              </label>)}
-              <small>The current chapter and book instructions are always included.</small>
-            </div>}
-            {sidePanel !== "git" && busy && (
-              <div className="ai-busy">
-                <LoaderCircle className="spin" size={20} /> {brainstormBusy
-                  ? "Thinking through your idea…" : "Reading your chapter…"}
-              </div>
-            )}
             {sidePanel !== "git" && result && (
-              <div className="review-result">
+              <div className="review-result" ref={reviewResultRef}>
                 <div className="result-heading">
                   <span className="eyebrow">
                     {result.action === "editor" ? "EDITOR REPORT" : "ASSISTANT RESPONSE"}
@@ -1733,7 +1745,7 @@ function App() {
                     <X size={17} />
                   </button>
                 </div>
-                <p className="result-summary">{result.summary}</p>
+                <MarkdownDisplay text={result.summary} className="result-summary" />
                 {result.warnings?.length > 0 && <div className="result-group">
                   <h5>Continuity warnings <span>{result.warnings.length}</span></h5>
                   {result.warnings.map((warning, i) => <div className="finding" key={i}>
@@ -1809,6 +1821,30 @@ function App() {
               </div>
             )}
           </div>
+          {sidePanel === "assist" && <div className="assistant-composer">
+            <label htmlFor="assistant-message">YOUR MESSAGE</label>
+            <textarea id="assistant-message" value={brainstormInput}
+              onChange={(event) => setBrainstormInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                  event.preventDefault();
+                  if (!busy && brainstormInput.trim()) sendBrainstorm(false);
+                }
+              }}
+              placeholder="Tell me what you’re thinking about…"
+              disabled={busy} aria-label="Your message to the assistant" />
+            <div className="assistant-composer-actions">
+              <button className="composer-suggest" onClick={() => sendBrainstorm(true)}
+                disabled={busy || (!brainstormInput.trim() && !brainstormMessages.length)}>
+                <NotebookPen size={15} /> Suggest notes
+              </button>
+              <button className="composer-send" onClick={() => sendBrainstorm(false)}
+                disabled={busy || !brainstormInput.trim()}>
+                <Send size={15} /> Send
+              </button>
+            </div>
+            <small>The assistant chooses relevant files. You approve each note before it is saved.</small>
+          </div>}
           <div className="ai-foot">
             {sidePanel === "git" ? (
               "Git runs in this book folder."
@@ -1819,6 +1855,13 @@ function App() {
               </>
             )}
           </div>
+          {aiPending && <div className="ai-loading-overlay" role="status" aria-live="polite">
+            <div className="ai-loading-message">
+              <LoaderCircle className="spin" size={34} aria-hidden="true" />
+              <strong>{aiPending}</strong>
+              <span>Your writing stays in place while the assistant works.</span>
+            </div>
+          </div>}
         </aside>
       )}
       {renderModal()}
