@@ -11,6 +11,7 @@ const { createUpdateController } = require("./updater.cjs");
 const { contextMenuTemplate } = require("./context-menu.cjs");
 const { probePublishedRelease } = require("./release-probe.cjs");
 const fs = require("node:fs/promises");
+const nativeFs = require("node:fs");
 const path = require("node:path");
 const book = require("./book.cjs");
 const { review, generateCommitMessage } = require("./ai.cjs");
@@ -18,6 +19,7 @@ const { exportBook } = require("./export.cjs");
 const git = require("./git.cjs");
 
 let mainWindow;
+let activeBookWatch = null;
 app.setName("Assisted Writer");
 const recentFile = () => path.join(app.getPath("userData"), "recent.json");
 const keyFile = () => path.join(app.getPath("userData"), "api-key.enc");
@@ -85,6 +87,122 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
 }
 
+function revisionSnapshot(data) {
+  const revisions = data.revisions || {};
+  const snapshot = {
+    "book.json": revisions.manifest,
+    "notes/book.md": revisions.bookNotes,
+    "notes/ai-context.md": revisions.aiContext,
+    "AGENTS.md": revisions.agentGuide,
+  };
+  for (const chapter of data.chapters || []) {
+    snapshot[`chapters/${chapter.file}`] = revisions.chapters?.[chapter.id];
+    snapshot[`chapters/${chapter.notesFile}`] = revisions.notes?.[chapter.id];
+    snapshot[`chapters/${chapter.file.slice(0, -3)}.context.md`] = revisions.contexts?.[chapter.id];
+  }
+  for (const [kind, hash] of Object.entries(revisions.references || {}))
+    snapshot[`notes/${kind}.md`] = hash;
+  return snapshot;
+}
+
+function setBookWatchSnapshot(root, data) {
+  if (activeBookWatch?.root === root)
+    activeBookWatch.snapshot = revisionSnapshot(data);
+}
+
+function recordBookRevision(root, relativePath, hash) {
+  if (activeBookWatch?.root === root && hash)
+    activeBookWatch.snapshot[relativePath] = hash;
+}
+
+function closeBookWatch() {
+  if (!activeBookWatch) return;
+  clearTimeout(activeBookWatch.timer);
+  for (const watcher of activeBookWatch.watchers) watcher.close();
+  activeBookWatch = null;
+}
+
+function watchRelevantFile(filename) {
+  if (!filename) return true;
+  const file = String(filename);
+  return [".md", ".json", ".yaml", ".yml", ".toml"].includes(path.extname(file).toLowerCase());
+}
+
+async function installBookWatchers(state) {
+  const directories = [];
+  async function visit(directory) {
+    directories.push(directory);
+    let entries;
+    try { entries = await fs.readdir(directory, { withFileTypes: true }); }
+    catch { return; }
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name !== ".git" && entry.name !== "exports")
+        await visit(path.join(directory, entry.name));
+    }
+  }
+  await visit(state.root);
+  if (activeBookWatch !== state) return;
+  for (const directory of directories) {
+    try {
+      const watcher = nativeFs.watch(directory, { persistent: false }, (_event, filename) => {
+        if (!watchRelevantFile(filename)) return;
+        scheduleBookRefresh(state, directory === state.root || !filename
+          ? ""
+          : path.relative(state.root, path.join(directory, String(filename))));
+      });
+      watcher.on("error", () => {});
+      state.watchers.push(watcher);
+    } catch { /* A removed directory will be picked up on the next refresh. */ }
+  }
+  // Catch changes made while the directory watches were being installed.
+  scheduleBookRefresh(state, "");
+}
+
+function scheduleBookRefresh(state, changedPath) {
+  if (activeBookWatch !== state) return;
+  if (changedPath && /(^|\/)\.[^/]+\.tmp$/.test(changedPath)) return;
+  clearTimeout(state.timer);
+  state.timer = setTimeout(async () => {
+    if (activeBookWatch !== state) return;
+    try {
+      const data = await book.readBook(state.root);
+      const next = revisionSnapshot(data);
+      const paths = new Set([...Object.keys(state.snapshot), ...Object.keys(next)]);
+      const changed = [...paths].filter((file) => state.snapshot[file] !== next[file]);
+      state.snapshot = next;
+      if (changed.length)
+        mainWindow?.webContents.send("book:changed", { root: state.root, book: data, changed });
+      // Refresh directory watches after a manifest change creates/removes chapter files.
+      if (changed.includes("book.json")) {
+        for (const watcher of state.watchers) watcher.close();
+        state.watchers = [];
+        await installBookWatchers(state);
+      }
+    } catch (error) {
+      mainWindow?.webContents.send("book:changed", {
+        root: state.root,
+        error: error.message,
+      });
+    }
+  }, 180);
+}
+
+function watchBook(root, data) {
+  if (activeBookWatch?.root === root) {
+    activeBookWatch.snapshot = revisionSnapshot(data);
+    return;
+  }
+  closeBookWatch();
+  const state = {
+    root,
+    snapshot: revisionSnapshot(data),
+    watchers: [],
+    timer: null,
+  };
+  activeBookWatch = state;
+  installBookWatchers(state).catch(() => {});
+}
+
 const updater = createUpdateController(autoUpdater, (status) =>
   mainWindow?.webContents.send("update:status", status), probePublishedRelease);
 
@@ -104,6 +222,7 @@ app.whenReady().then(() => {
   });
 });
 app.on("window-all-closed", () => {
+  closeBookWatch();
   if (process.platform !== "darwin") app.quit();
 });
 
@@ -121,7 +240,9 @@ ipcMain.handle("book:create", async (_event, title, author) => {
     String(author || ""),
   );
   await remember(root);
-  return book.readBook(root);
+  const data = await book.readBook(root);
+  watchBook(root, data);
+  return data;
 });
 ipcMain.handle("book:open", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -132,35 +253,66 @@ ipcMain.handle("book:open", async () => {
   const root = result.filePaths[0];
   const data = await book.readBook(root);
   await remember(root);
+  watchBook(root, data);
   return data;
 });
 ipcMain.handle("book:load", async (_event, root) => {
   const data = await book.readBook(root);
   await remember(root);
+  watchBook(root, data);
   return data;
 });
-ipcMain.handle("chapter:add", (_event, root) => book.addChapter(root));
-ipcMain.handle("chapter:save", (_event, root, id, body, title) =>
-  book.saveChapter(root, id, body, title),
-);
-ipcMain.handle("chapter:reorder", (_event, root, id, direction) =>
-  book.reorderChapter(root, id, direction),
-);
-ipcMain.handle("chapter:delete", (_event, root, id) =>
-  book.deleteChapter(root, id),
-);
-ipcMain.handle("notes:save", (_event, root, id, content) =>
-  book.saveNotes(root, id, content),
-);
-ipcMain.handle("notes:append", (_event, root, target, chapterId, note) =>
-  book.appendNote(root, target, chapterId, note),
-);
-ipcMain.handle("reference:save", (_event, root, kind, chapterId, content) =>
-  book.saveReference(root, kind, chapterId, content),
-);
-ipcMain.handle("book:metadata", (_event, root, values) =>
-  book.saveMetadata(root, values),
-);
+ipcMain.handle("book:unwatch", () => closeBookWatch());
+ipcMain.handle("chapter:add", async (_event, root) => {
+  const data = await book.addChapter(root);
+  setBookWatchSnapshot(root, data);
+  return data;
+});
+ipcMain.handle("chapter:save", async (_event, root, id, body, title, expectedRevision, expectedManifestRevision) => {
+  const saved = await book.saveChapter(root, id, body, title, expectedRevision, expectedManifestRevision);
+  recordBookRevision(root, `chapters/${saved.file}`, saved.revisions.chapter);
+  recordBookRevision(root, "book.json", saved.revisions.manifest);
+  return saved;
+});
+ipcMain.handle("chapter:reorder", async (_event, root, id, direction) => {
+  const data = await book.reorderChapter(root, id, direction);
+  setBookWatchSnapshot(root, data);
+  return data;
+});
+ipcMain.handle("chapter:delete", async (_event, root, id) => {
+  const data = await book.deleteChapter(root, id);
+  setBookWatchSnapshot(root, data);
+  return data;
+});
+ipcMain.handle("notes:save", async (_event, root, id, content, expectedRevision) => {
+  const hash = await book.saveNotes(root, id, content, expectedRevision);
+  const manifest = await book.loadManifest(root);
+  const chapter = manifest.chapters.find((item) => item.id === id);
+  const file = id === "book" ? "notes/book.md" : `chapters/${chapter.notesFile}`;
+  recordBookRevision(root, file, hash);
+  return hash;
+});
+ipcMain.handle("notes:append", async (_event, root, target, chapterId, note) => {
+  const data = await book.appendNote(root, target, chapterId, note);
+  setBookWatchSnapshot(root, data);
+  return data;
+});
+ipcMain.handle("reference:save", async (_event, root, kind, chapterId, content, expectedRevision) => {
+  const hash = await book.saveReference(root, kind, chapterId, content, expectedRevision);
+  const manifest = await book.loadManifest(root);
+  const chapter = manifest.chapters.find((item) => item.id === chapterId);
+  const file = kind === "book-context" ? "notes/ai-context.md"
+    : ["characters", "locations", "timeline", "terminology"].includes(kind)
+      ? `notes/${kind}.md`
+      : `chapters/${chapter.file.slice(0, -3)}.context.md`;
+  recordBookRevision(root, file, hash);
+  return hash;
+});
+ipcMain.handle("book:metadata", async (_event, root, values, expectedRevision) => {
+  const data = await book.saveMetadata(root, values, expectedRevision);
+  setBookWatchSnapshot(root, data);
+  return data;
+});
 ipcMain.handle("settings:key-status", async () => Boolean(await getKey()));
 ipcMain.handle("settings:set-key", async (_event, value) => {
   const key = String(value || "").trim();
@@ -201,8 +353,13 @@ ipcMain.handle("ai:commit-message", async (_event, root, files) => {
 });
 ipcMain.handle(
   "ai:approve",
-  (_event, root, chapterId, quote, replacement, hash) =>
-    book.approveSuggestion(root, chapterId, quote, replacement, hash),
+  async (_event, root, chapterId, quote, replacement, hash) => {
+    const result = await book.approveSuggestion(root, chapterId, quote, replacement, hash);
+    const manifest = await book.loadManifest(root);
+    const chapter = manifest.chapters.find((item) => item.id === chapterId);
+    recordBookRevision(root, `chapters/${chapter.file}`, result.revision);
+    return result;
+  },
 );
 ipcMain.handle("book:export", async (_event, root, format) => {
   if (!["docx", "epub", "pdf"].includes(format))

@@ -248,10 +248,13 @@ function App() {
   const selectedRef = useRef(null);
   const titleRef = useRef("");
   const rootRef = useRef(null);
+  const bookRef = useRef(null);
+  const reconcileRef = useRef(null);
   const timer = useRef(null);
   const notesTimer = useRef(null);
   const brainstormLastMessageRef = useRef(null);
   const reviewResultRef = useRef(null);
+  bookRef.current = book;
   useEffect(() => {
     brainstormLastMessageRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [brainstormMessages.length]);
@@ -286,9 +289,18 @@ function App() {
       if (root && id)
         timer.current = setTimeout(async () => {
           try {
-            await api.saveChapter(root, id, body, currentTitle);
-            setSaveState("Saved");
+            const state = bookRef.current;
+            const saved = await api.saveChapter(root, id, body, currentTitle,
+              state?.revisions?.chapters?.[id], state?.revisions?.manifest);
+            recordChapterRevision(id, saved, body);
+            if (selectedRef.current === id && editor?.getMarkdown() === body &&
+              titleRef.current === currentTitle) setSaveState("Saved");
           } catch (error) {
+            if (isExternalChange(error)) {
+              try { reconcileRef.current(await api.loadBook(root)); }
+              catch (reloadError) { announce(reloadError.message); }
+              return;
+            }
             setSaveState("Save failed");
             announce(error.message);
           }
@@ -332,6 +344,11 @@ function App() {
     [],
   );
   const current = book?.chapters.find((c) => c.id === selectedId);
+  reconcileRef.current = reconcileExternalBook;
+  useEffect(() => {
+    const unsubscribe = api?.onBookChanged?.((change) => reconcileRef.current?.(change));
+    return () => unsubscribe?.();
+  }, []);
   useEffect(() => {
     if (book?.root && sidePanel === "git") refreshGit(book.root);
   }, [book?.root, sidePanel]);
@@ -398,20 +415,189 @@ function App() {
     setTimeout(() => setToast(""), 5000);
   }
 
+  function isExternalChange(error) {
+    return String(error?.message || "").includes("changed outside Assisted Writer");
+  }
+
+  function recordChapterRevision(id, saved, body) {
+    if (!saved?.revisions) return;
+    const previous = bookRef.current;
+    if (!previous) return;
+    const updated = {
+      ...previous,
+      chapters: previous.chapters.map((chapter) => chapter.id === id ? {
+        ...chapter,
+        ...(body === undefined ? {} : { body }),
+        title: saved.title || chapter.title,
+      } : chapter),
+      revisions: {
+        ...previous.revisions,
+        manifest: saved.revisions.manifest || previous.revisions?.manifest,
+        chapters: {
+          ...previous.revisions?.chapters,
+          [id]: saved.revisions.chapter,
+        },
+      },
+    };
+    bookRef.current = updated;
+    setBook((value) => value ? { ...value, revisions: updated.revisions } : value);
+  }
+
+  function recordNotesRevision(id, hash, content) {
+    if (!hash) return;
+    const previous = bookRef.current;
+    if (!previous) return;
+    const updated = {
+      ...previous,
+      ...(id === "book" ? { bookNotes: content } : {
+        chapters: previous.chapters.map((chapter) => chapter.id === id
+          ? { ...chapter, notes: content } : chapter),
+      }),
+      revisions: {
+        ...previous.revisions,
+        notes: { ...previous.revisions?.notes, [id]: hash },
+        ...(id === "book" ? { bookNotes: hash } : {}),
+      },
+    };
+    bookRef.current = updated;
+    setBook((value) => value ? { ...value, revisions: updated.revisions } : value);
+  }
+
+  function recordReferenceRevision(kind, id, hash, content) {
+    if (!hash) return;
+    const previous = bookRef.current;
+    if (!previous) return;
+    const revisions = { ...previous.revisions };
+    const updated = kind === "book-context" ? { ...previous, aiContext: content }
+      : kind === "chapter-context" ? { ...previous, chapters: previous.chapters.map((chapter) =>
+          chapter.id === id ? { ...chapter, context: content } : chapter) }
+      : { ...previous, references: { ...previous.references, [kind]: content } };
+    if (kind === "book-context") revisions.aiContext = hash;
+    else if (kind === "chapter-context")
+      revisions.contexts = { ...revisions.contexts, [id]: hash };
+    else revisions.references = { ...revisions.references, [kind]: hash };
+    bookRef.current = { ...updated, revisions };
+    setBook((value) => value ? { ...value, revisions } : value);
+  }
+
+  function reconcileExternalBook(change) {
+    if (change?.error) {
+      announce(`Could not reload changed book files: ${change.error}`);
+      return;
+    }
+    const incoming = change?.book || change;
+    if (!incoming || incoming.root !== rootRef.current) return;
+    const previous = bookRef.current;
+    if (!previous) {
+      showBook(incoming);
+      return;
+    }
+
+    const id = selectedRef.current;
+    const oldChapter = previous.chapters.find((chapter) => chapter.id === id);
+    const newChapter = incoming.chapters.find((chapter) => chapter.id === id);
+    const chapterChanged = Boolean(oldChapter && newChapter && (
+      previous.revisions?.chapters?.[id] !== incoming.revisions?.chapters?.[id] ||
+      oldChapter.body !== newChapter.body
+    ));
+    const notesChanged = Boolean(oldChapter && newChapter && (
+      previous.revisions?.notes?.[id] !== incoming.revisions?.notes?.[id] ||
+      oldChapter.notes !== newChapter.notes
+    ));
+    const bookNotesChanged = previous.bookNotes !== incoming.bookNotes ||
+      previous.revisions?.notes?.book !== incoming.revisions?.notes?.book;
+    const titleChanged = oldChapter?.title !== newChapter?.title;
+    const referenceChanged = section === "reference" && (
+      referenceValue(previous, referenceKind, id) !== referenceValue(incoming, referenceKind, id) ||
+      referenceRevision(previous, referenceKind, id) !== referenceRevision(incoming, referenceKind, id)
+    );
+    const activeChanged = section === "write" ? chapterChanged || titleChanged
+      : section === "notes" ? notesChanged
+      : section === "book-notes" ? bookNotesChanged
+      : section === "reference" ? referenceChanged : false;
+    const selectedWasRemoved = Boolean(id && !newChapter);
+
+    setBook(incoming);
+    bookRef.current = incoming;
+    if (previous.manifest.title !== incoming.manifest.title ||
+      previous.manifest.author !== incoming.manifest.author) {
+      setBookTitle(incoming.manifest.title);
+      setBookAuthor(incoming.manifest.author || "");
+    }
+
+    if (selectedWasRemoved) {
+      const fallback = incoming.chapters[0];
+      if (fallback) {
+        selectedRef.current = fallback.id;
+        titleRef.current = fallback.title;
+        setSelectedId(fallback.id);
+        setTitle(fallback.title);
+        setNotes(fallback.notes);
+        setSection("write");
+        editor?.commands.setContent(fallback.body, {
+          contentType: "markdown", emitUpdate: false,
+        });
+      }
+      clearTimeout(timer.current);
+      clearTimeout(notesTimer.current);
+    } else {
+      if (titleChanged && newChapter) {
+        titleRef.current = newChapter.title;
+        setTitle(newChapter.title);
+      }
+      if (section === "write" && chapterChanged && newChapter) {
+        clearTimeout(timer.current);
+        editor?.commands.setContent(newChapter.body, {
+          contentType: "markdown", emitUpdate: false,
+        });
+      } else if (section === "write" && titleChanged && newChapter) {
+        clearTimeout(timer.current);
+        changeTitle(newChapter.title);
+      }
+      if (section === "notes" && notesChanged && newChapter) {
+        clearTimeout(notesTimer.current);
+        setNotes(newChapter.notes);
+      }
+      if (section === "book-notes" && bookNotesChanged) {
+        clearTimeout(notesTimer.current);
+        setNotes(incoming.bookNotes);
+      }
+      if (section === "reference" && referenceChanged) {
+        clearTimeout(notesTimer.current);
+        setReferenceText(referenceValue(incoming, referenceKind, id));
+      }
+    }
+    if (activeChanged || selectedWasRemoved) setSaveState("Saved");
+    announce("Changes made to the book files were loaded.");
+  }
+
+  function referenceRevision(data, kind, chapterId) {
+    if (kind === "book-context") return data.revisions?.aiContext;
+    if (kind === "chapter-context") return data.revisions?.contexts?.[chapterId];
+    return data.revisions?.references?.[kind];
+  }
+
   async function flush() {
     clearTimeout(timer.current);
     clearTimeout(notesTimer.current);
     if (!book || !selectedRef.current) return;
-    if (section === "write" && editor)
-      await api.saveChapter(
+    if (section === "write" && editor) {
+      const state = bookRef.current;
+      const saved = await api.saveChapter(
         rootRef.current,
         selectedRef.current,
         editor.getMarkdown(),
         titleRef.current,
+        state?.revisions?.chapters?.[selectedRef.current],
+        state?.revisions?.manifest,
       );
+      recordChapterRevision(selectedRef.current, saved, editor.getMarkdown());
+    }
     if (section === "notes" || section === "book-notes") {
       const id = section === "book-notes" ? "book" : selectedRef.current;
-      await api.saveNotes(rootRef.current, id, notes);
+      const hash = await api.saveNotes(rootRef.current, id, notes,
+        bookRef.current?.revisions?.notes?.[id]);
+      recordNotesRevision(id, hash, notes);
       if (id === "book") setBook((prev) => ({ ...prev, bookNotes: notes }));
       else
         setBook((prev) => ({
@@ -421,14 +607,19 @@ function App() {
           ),
         }));
     }
-    if (section === "reference") await api.saveReference(rootRef.current,
-      referenceKind, selectedRef.current, referenceText);
+    if (section === "reference") {
+      const hash = await api.saveReference(rootRef.current,
+        referenceKind, selectedRef.current, referenceText,
+        referenceRevision(bookRef.current, referenceKind, selectedRef.current));
+      recordReferenceRevision(referenceKind, selectedRef.current, hash, referenceText);
+    }
     setSaveState("Saved");
   }
 
   function showBook(data) {
     if (!data) return;
     setBook(data);
+    bookRef.current = data;
     rootRef.current = data.root;
     setSelectedId(data.chapters[0]?.id || null);
     selectedRef.current = data.chapters[0]?.id || null;
@@ -457,6 +648,7 @@ function App() {
       await flush();
       const latest = await api.loadBook(rootRef.current);
       setBook(latest);
+      bookRef.current = latest;
       const chapter = latest.chapters.find((c) => c.id === id);
       if (!chapter) return;
       selectedRef.current = id;
@@ -480,6 +672,7 @@ function App() {
       await flush();
       const latest = await api.loadBook(rootRef.current);
       setBook(latest);
+      bookRef.current = latest;
       setSection("book-notes");
       setNotes(latest.bookNotes);
       setResult(null);
@@ -499,6 +692,7 @@ function App() {
       await flush();
       const latest = await api.loadBook(rootRef.current);
       setBook(latest);
+      bookRef.current = latest;
       setReferenceKind(kind);
       setReferenceText(referenceValue(latest, kind));
       setSection("reference");
@@ -513,13 +707,22 @@ function App() {
     const root = rootRef.current, kind = referenceKind, id = selectedRef.current;
     notesTimer.current = setTimeout(async () => {
       try {
-        await api.saveReference(root, kind, id, value);
+        const hash = await api.saveReference(root, kind, id, value,
+          referenceRevision(bookRef.current, kind, id));
+        recordReferenceRevision(kind, id, hash, value);
         setBook((prev) => kind === "book-context" ? { ...prev, aiContext: value }
           : kind === "chapter-context" ? { ...prev, chapters: prev.chapters.map((c) =>
               c.id === id ? { ...c, context: value } : c) }
           : { ...prev, references: { ...prev.references, [kind]: value } });
         setSaveState("Saved");
-      } catch (error) { setSaveState("Save failed"); announce(error.message); }
+      } catch (error) {
+        if (isExternalChange(error)) {
+          try { reconcileRef.current(await api.loadBook(root)); }
+          catch (reloadError) { announce(reloadError.message); }
+          return;
+        }
+        setSaveState("Save failed"); announce(error.message);
+      }
     }, 650);
   }
 
@@ -533,7 +736,10 @@ function App() {
       body = editor?.getMarkdown() || "";
     timer.current = setTimeout(async () => {
       try {
-        const chapter = await api.saveChapter(root, id, body, value);
+        const state = bookRef.current;
+        const chapter = await api.saveChapter(root, id, body, value,
+          state?.revisions?.chapters?.[id], state?.revisions?.manifest);
+        recordChapterRevision(id, chapter, body);
         setBook((prev) => ({
           ...prev,
           chapters: prev.chapters.map((c) =>
@@ -542,6 +748,11 @@ function App() {
         }));
         setSaveState("Saved");
       } catch (error) {
+        if (isExternalChange(error)) {
+          try { reconcileRef.current(await api.loadBook(root)); }
+          catch (reloadError) { announce(reloadError.message); }
+          return;
+        }
         setSaveState("Save failed");
         announce(error.message);
       }
@@ -556,7 +767,9 @@ function App() {
       id = section === "book-notes" ? "book" : selectedRef.current;
     notesTimer.current = setTimeout(async () => {
       try {
-        await api.saveNotes(root, id, value);
+        const hash = await api.saveNotes(root, id, value,
+          bookRef.current?.revisions?.notes?.[id]);
+        recordNotesRevision(id, hash, value);
         if (id === "book") setBook((prev) => ({ ...prev, bookNotes: value }));
         else
           setBook((prev) => ({
@@ -567,6 +780,11 @@ function App() {
           }));
         setSaveState("Saved");
       } catch (error) {
+        if (isExternalChange(error)) {
+          try { reconcileRef.current(await api.loadBook(root)); }
+          catch (reloadError) { announce(reloadError.message); }
+          return;
+        }
         setSaveState("Save failed");
         announce(error.message);
       }
@@ -595,8 +813,9 @@ function App() {
       const data = await api.saveMetadata(book.root, {
         title: bookTitle,
         author: bookAuthor,
-      });
+      }, bookRef.current?.revisions?.manifest);
       setBook(data);
+      bookRef.current = data;
       setModal(null);
       announce("Book details saved.");
     } catch (error) {
@@ -617,6 +836,7 @@ function App() {
       await flush();
       const data = await api.addChapter(book.root);
       setBook(data);
+      bookRef.current = data;
       await chooseChapterAfterAdd(data);
     } catch (error) {
       announce(error.message);
@@ -640,7 +860,9 @@ function App() {
   async function moveChapter(id, direction) {
     try {
       await flush();
-      setBook(await api.reorderChapter(book.root, id, direction));
+      const data = await api.reorderChapter(book.root, id, direction);
+      setBook(data);
+      bookRef.current = data;
     } catch (error) {
       announce(error.message);
     }
@@ -658,6 +880,7 @@ function App() {
         data.chapters.find((item) => item.id === selectedId) ||
         data.chapters[Math.max(0, data.chapters.length - 1)];
       setBook(data);
+      bookRef.current = data;
       if (selectedId === chapter.id) {
         selectedRef.current = next.id;
         titleRef.current = next.title;
@@ -763,6 +986,7 @@ function App() {
       const target = note.target;
       const updated = await api.appendNote(book.root, target, chapterId, note);
       setBook(updated);
+      bookRef.current = updated;
       if (target === "book" && section === "book-notes")
         setNotes(updated.bookNotes);
       if (target === "chapter" && section === "notes" && selectedId === chapterId)
@@ -794,8 +1018,19 @@ function App() {
         contentType: "markdown",
         emitUpdate: false,
       });
+      const updatedBook = {
+        ...bookRef.current,
+        chapters: bookRef.current.chapters.map((chapter) => chapter.id === selectedId
+          ? { ...chapter, body: applied.body } : chapter),
+        revisions: {
+          ...bookRef.current.revisions,
+          chapters: { ...bookRef.current.revisions.chapters, [selectedId]: applied.revision },
+        },
+      };
+      bookRef.current = updatedBook;
       setBook((prev) => ({
         ...prev,
+        revisions: updatedBook.revisions,
         chapters: prev.chapters.map((c) =>
           c.id === selectedId ? { ...c, body: applied.body } : c,
         ),
@@ -1050,7 +1285,11 @@ function App() {
             className="book-switch"
             onClick={async () => {
               await flush();
+              await api.closeBook();
               setBook(null);
+              bookRef.current = null;
+              rootRef.current = null;
+              selectedRef.current = null;
               api.recent().then(setRecent);
             }}
           >

@@ -6,18 +6,26 @@ contextBridge.exposeInMainWorld("writer", {
   createBook: (title, author) => invoke("book:create", title, author),
   openBook: () => invoke("book:open"),
   loadBook: (root) => invoke("book:load", root),
+  closeBook: () => invoke("book:unwatch"),
   addChapter: (root) => invoke("chapter:add", root),
-  saveChapter: (root, id, body, title) =>
-    invoke("chapter:save", root, id, body, title),
+  saveChapter: (root, id, body, title, expectedRevision, expectedManifestRevision) =>
+    invoke("chapter:save", root, id, body, title, expectedRevision, expectedManifestRevision),
   reorderChapter: (root, id, direction) =>
     invoke("chapter:reorder", root, id, direction),
   deleteChapter: (root, id) => invoke("chapter:delete", root, id),
-  saveNotes: (root, id, content) => invoke("notes:save", root, id, content),
+  saveNotes: (root, id, content, expectedRevision) =>
+    invoke("notes:save", root, id, content, expectedRevision),
   appendNote: (root, target, chapterId, note) =>
     invoke("notes:append", root, target, chapterId, note),
-  saveReference: (root, kind, chapterId, content) =>
-    invoke("reference:save", root, kind, chapterId, content),
-  saveMetadata: (root, values) => invoke("book:metadata", root, values),
+  saveReference: (root, kind, chapterId, content, expectedRevision) =>
+    invoke("reference:save", root, kind, chapterId, content, expectedRevision),
+  saveMetadata: (root, values, expectedRevision) =>
+    invoke("book:metadata", root, values, expectedRevision),
+  onBookChanged: (callback) => {
+    const listener = (_event, change) => callback(change);
+    ipcRenderer.on("book:changed", listener);
+    return () => ipcRenderer.removeListener("book:changed", listener);
+  },
   keyStatus: () => invoke("settings:key-status"),
   setKey: (key) => invoke("settings:set-key", key),
   checkForUpdates: () => invoke("update:check"),

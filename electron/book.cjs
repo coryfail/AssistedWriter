@@ -21,6 +21,10 @@ const referencePath = (root, name) =>
 const contextPath = (root) => path.join(root, "notes", "ai-context.md");
 const chapterContextPath = (root, chapter) =>
   path.join(root, "chapters", `${chapter.file.slice(0, -3)}.context.md`);
+const revision = (content) =>
+  crypto.createHash("sha256").update(content).digest("hex");
+const externalChangeError = () =>
+  new Error("This file changed outside Assisted Writer. The latest version was loaded.");
 const readOptional = async (file) => {
   try { return await fs.readFile(file, "utf8"); }
   catch (error) { if (error.code === "ENOENT") return ""; throw error; }
@@ -69,20 +73,22 @@ async function migrateBookReferences(root, manifest) {
 const heading = (title, body) => `# ${title}\n\n${body.trim()}\n`;
 const withoutHeading = (content) =>
   content.replace(/^# [^\n]*\n(?:\n)?/, "").trim();
-async function atomicWrite(file, content) {
+async function atomicWrite(file, content, expectedRevision) {
   const temporary = `${file}.${crypto.randomUUID()}.tmp`;
   try {
     await fs.writeFile(temporary, content);
+    await assertRevision(file, expectedRevision);
     await fs.rename(temporary, file);
   } finally {
     await fs.rm(temporary, { force: true }).catch(() => {});
   }
 }
-const writeJson = async (file, value) =>
-  atomicWrite(file, JSON.stringify(value, null, 2) + "\n");
+const writeJson = async (file, value, expectedRevision) =>
+  atomicWrite(file, JSON.stringify(value, null, 2) + "\n", expectedRevision);
 
-async function loadManifest(root) {
-  const data = JSON.parse(await fs.readFile(manifestPath(root), "utf8"));
+async function readManifest(root) {
+  const raw = await fs.readFile(manifestPath(root), "utf8");
+  const data = JSON.parse(raw);
   if (data.format !== "assisted-writer-1" || !Array.isArray(data.chapters))
     throw new Error("This is not a supported Assisted Writer book.");
   for (const chapter of data.chapters) {
@@ -99,7 +105,18 @@ async function loadManifest(root) {
     )
       throw new Error("The book manifest contains an invalid chapter entry.");
   }
-  return data;
+  return { data, raw };
+}
+async function loadManifest(root) {
+  return (await readManifest(root)).data;
+}
+
+async function assertRevision(file, expected) {
+  if (!expected) return;
+  let current;
+  try { current = await fs.readFile(file, "utf8"); }
+  catch { throw externalChangeError(); }
+  if (revision(current) !== expected) throw externalChangeError();
 }
 
 async function createBook(parent, title, author) {
@@ -143,7 +160,7 @@ async function createBook(parent, title, author) {
 }
 
 async function readBook(root) {
-  const manifest = await loadManifest(root);
+  const { data: manifest } = await readManifest(root);
   // Earlier versions called the first default chapter "Chapter One" but used
   // numerals for every chapter added afterward. Update only that default title.
   const legacyFirst = manifest.chapters.find((chapter) =>
@@ -169,27 +186,62 @@ async function readBook(root) {
       [fs.access(chapterPath(root, chapter)), fs.access(notePath(root, chapter))]),
   ]);
   await migrateBookReferences(root, manifest);
-  const chapters = await Promise.all(
-    manifest.chapters.map(async (c) => ({
-      ...c,
-      body: withoutHeading(await fs.readFile(chapterPath(root, c), "utf8")),
-      notes: await fs.readFile(notePath(root, c), "utf8"),
-      context: await readOptional(chapterContextPath(root, c)),
+  const [chapters, bookNotes, aiContext, agentGuide, references] = await Promise.all([
+    Promise.all(manifest.chapters.map(async (c) => {
+      const [chapterFile, notes, context] = await Promise.all([
+        fs.readFile(chapterPath(root, c), "utf8"),
+        fs.readFile(notePath(root, c), "utf8"),
+        readOptional(chapterContextPath(root, c)),
+      ]);
+      return {
+        ...c,
+        body: withoutHeading(chapterFile),
+        notes,
+        context,
+        revisions: {
+          chapter: revision(chapterFile),
+          notes: revision(notes),
+          context: revision(context),
+        },
+      };
     })),
-  );
+    fs.readFile(path.join(root, "notes", "book.md"), "utf8"),
+    readOptional(contextPath(root)),
+    readOptional(path.join(root, "AGENTS.md")),
+    Object.fromEntries(await Promise.all(referenceNames.map(async (name) => {
+      const content = await readOptional(referencePath(root, name));
+      return [name, { content, revision: revision(content) }];
+    }))),
+  ]);
+  const referenceContents = Object.fromEntries(referenceNames.map((name) =>
+    [name, references[name].content]));
   return {
     root,
     manifest,
     chapters,
-    bookNotes: await fs.readFile(path.join(root, "notes", "book.md"), "utf8"),
-    aiContext: await readOptional(contextPath(root)),
-    references: Object.fromEntries(await Promise.all(referenceNames.map(async (name) =>
-      [name, await readOptional(referencePath(root, name))]))),
+    bookNotes,
+    aiContext,
+    agentGuide,
+    references: referenceContents,
+    revisions: {
+      manifest: revision((await fs.readFile(manifestPath(root), "utf8"))),
+      bookNotes: revision(bookNotes),
+      aiContext: revision(aiContext),
+      agentGuide: revision(agentGuide),
+      chapters: Object.fromEntries(chapters.map((c) => [c.id, c.revisions.chapter])),
+      notes: {
+        book: revision(bookNotes),
+        ...Object.fromEntries(chapters.map((c) => [c.id, c.revisions.notes])),
+      },
+      contexts: Object.fromEntries(chapters.map((c) => [c.id, c.revisions.context])),
+      references: Object.fromEntries(referenceNames.map((name) =>
+        [name, references[name].revision])),
+    },
   };
 }
 
 async function addChapter(root) {
-  const manifest = await loadManifest(root);
+  const { data: manifest, raw } = await readManifest(root);
   const n = manifest.chapters.length + 1;
   const title = `Chapter ${n}`;
   const basename = `chapter-${String(Date.now())}`;
@@ -203,30 +255,48 @@ async function addChapter(root) {
   await fs.writeFile(chapterPath(root, chapter), heading(title, ""));
   await fs.writeFile(notePath(root, chapter), `# Notes for ${title}\n\n`);
   await fs.writeFile(chapterContextPath(root, chapter), `# AI Context for ${title}\n\n`);
-  await writeJson(manifestPath(root), manifest);
+  await writeJson(manifestPath(root), manifest, revision(raw));
   return readBook(root);
 }
 
-async function saveChapter(root, id, body, title) {
-  const manifest = await loadManifest(root);
+async function saveChapter(root, id, body, title, expectedRevision, expectedManifestRevision) {
+  const { data: manifest, raw: manifestRaw } = await readManifest(root);
   const chapter = manifest.chapters.find((c) => c.id === id);
   if (!chapter) throw new Error("Chapter not found.");
   if (typeof body !== "string" || typeof title !== "string" || !title.trim())
     throw new Error("Invalid chapter content.");
-  chapter.title = title.trim().replace(/[\r\n]+/g, " ");
-  await atomicWrite(chapterPath(root, chapter), heading(chapter.title, body));
-  await writeJson(manifestPath(root), manifest);
-  return chapter;
+  await assertRevision(chapterPath(root, chapter), expectedRevision);
+  const nextTitle = title.trim().replace(/[\r\n]+/g, " ");
+  if (expectedManifestRevision && revision(manifestRaw) !== expectedManifestRevision &&
+    chapter.title !== nextTitle)
+    throw externalChangeError();
+  chapter.title = nextTitle;
+  const chapterContent = heading(chapter.title, body);
+  await atomicWrite(chapterPath(root, chapter), chapterContent, expectedRevision);
+  await writeJson(manifestPath(root), manifest, revision(manifestRaw));
+  return {
+    ...chapter,
+    revisions: {
+      chapter: revision(chapterContent),
+      manifest: revision(JSON.stringify(manifest, null, 2) + "\n"),
+    },
+  };
 }
 
-async function saveNotes(root, id, content) {
+async function saveNotes(root, id, content, expectedRevision) {
   if (typeof content !== "string") throw new Error("Invalid notes.");
-  if (id === "book")
-    return atomicWrite(path.join(root, "notes", "book.md"), content);
+  if (id === "book") {
+    const file = path.join(root, "notes", "book.md");
+    await assertRevision(file, expectedRevision);
+    await atomicWrite(file, content, expectedRevision);
+    return revision(content);
+  }
   const manifest = await loadManifest(root);
   const chapter = manifest.chapters.find((c) => c.id === id);
   if (!chapter) throw new Error("Chapter not found.");
-  return atomicWrite(notePath(root, chapter), content);
+  await assertRevision(notePath(root, chapter), expectedRevision);
+  await atomicWrite(notePath(root, chapter), content, expectedRevision);
+  return revision(content);
 }
 
 async function appendNote(root, target, chapterId, note) {
@@ -256,18 +326,18 @@ async function appendNote(root, target, chapterId, note) {
     const nextEntry = previous.indexOf("<!-- assisted-writer-entry:", start + marker.length);
     if (start < 0 || close < 0 || (nextEntry >= 0 && nextEntry < close))
       throw new Error("The tracker entry changed. Review the proposal before saving it.");
-    await atomicWrite(file, `${previous.slice(0, close).trimEnd()}\n\n### ${title}\n\n${content}\n\n${previous.slice(close)}`);
+    await atomicWrite(file, `${previous.slice(0, close).trimEnd()}\n\n### ${title}\n\n${content}\n\n${previous.slice(close)}`, revision(previous));
     return readBook(root);
   }
   const addition = ["characters", "locations"].includes(target)
     ? `<!-- assisted-writer-entry:${crypto.randomUUID()} -->\n## ${title}\n\n${content}\n\n<!-- /assisted-writer-entry -->`
     : `## ${title}\n\n${content}`;
-  await atomicWrite(file, `${previous.trimEnd()}\n\n${addition}\n`);
+  await atomicWrite(file, `${previous.trimEnd()}\n\n${addition}\n`, revision(previous));
   return readBook(root);
 }
 
 async function reorderChapter(root, id, direction) {
-  const manifest = await loadManifest(root);
+  const { data: manifest, raw } = await readManifest(root);
   const index = manifest.chapters.findIndex((c) => c.id === id);
   const next = index + direction;
   if (index < 0 || next < 0 || next >= manifest.chapters.length)
@@ -276,46 +346,52 @@ async function reorderChapter(root, id, direction) {
     manifest.chapters[next],
     manifest.chapters[index],
   ];
-  await writeJson(manifestPath(root), manifest);
+  await writeJson(manifestPath(root), manifest, revision(raw));
   return readBook(root);
 }
 
 async function deleteChapter(root, id) {
-  const manifest = await loadManifest(root);
+  const { data: manifest, raw } = await readManifest(root);
   if (manifest.chapters.length <= 1)
     throw new Error("A book must contain at least one chapter.");
   const index = manifest.chapters.findIndex((c) => c.id === id);
   if (index < 0) throw new Error("Chapter not found.");
   const [chapter] = manifest.chapters.splice(index, 1);
+  await writeJson(manifestPath(root), manifest, revision(raw));
   await fs.unlink(chapterPath(root, chapter));
   await fs.unlink(notePath(root, chapter));
   await fs.rm(chapterContextPath(root, chapter), { force: true });
-  await writeJson(manifestPath(root), manifest);
   return readBook(root);
 }
 
-async function saveMetadata(root, values) {
-  const manifest = await loadManifest(root);
+async function saveMetadata(root, values, expectedRevision) {
+  const { data: manifest, raw } = await readManifest(root);
+  if (expectedRevision && revision(raw) !== expectedRevision)
+    throw externalChangeError();
   const title = String(values?.title || "").trim();
   if (!title) throw new Error("Book title is required.");
   manifest.title = title;
   manifest.author = String(values.author || "").trim();
-  await writeJson(manifestPath(root), manifest);
+  await writeJson(manifestPath(root), manifest, expectedRevision);
   return readBook(root);
 }
 
-async function saveReference(root, kind, chapterId, content) {
+async function saveReference(root, kind, chapterId, content, expectedRevision) {
   if (typeof content !== "string") throw new Error("Invalid reference content.");
   await loadManifest(root);
-  if (kind === "book-context") return atomicWrite(contextPath(root), content);
-  if (referenceNames.includes(kind)) return atomicWrite(referencePath(root, kind), content);
+  let file;
+  if (kind === "book-context") file = contextPath(root);
+  else if (referenceNames.includes(kind)) file = referencePath(root, kind);
   if (kind === "chapter-context") {
     const manifest = await loadManifest(root);
     const chapter = manifest.chapters.find((item) => item.id === chapterId);
     if (!chapter) throw new Error("Chapter not found.");
-    return atomicWrite(chapterContextPath(root, chapter), content);
+    file = chapterContextPath(root, chapter);
   }
-  throw new Error("Unknown reference type.");
+  if (!file) throw new Error("Unknown reference type.");
+  await assertRevision(file, expectedRevision);
+  await atomicWrite(file, content, expectedRevision);
+  return revision(content);
 }
 
 async function approveSuggestion(
@@ -347,10 +423,12 @@ async function approveSuggestion(
   await atomicWrite(
     chapterPath(root, chapter),
     heading(chapter.title, updated),
+    revision(content),
   );
   return {
     body: updated,
     hash: crypto.createHash("sha256").update(updated).digest("hex"),
+    revision: revision(heading(chapter.title, updated)),
   };
 }
 
