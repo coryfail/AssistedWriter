@@ -1,12 +1,7 @@
-name: Build and publish Mac app
+name: Legacy Electron release (manual)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    tags:
-      - 'v*.*.*'
 
 permissions:
   contents: write

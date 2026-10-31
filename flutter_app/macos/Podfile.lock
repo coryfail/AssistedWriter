@@ -1,0 +1,35 @@
+PODS:
+  - auto_updater_macos (0.0.1):
+    - FlutterMacOS
+    - Sparkle
+  - FlutterMacOS (1.0.0)
+  - git2dart_binaries (1.14.0):
+    - FlutterMacOS
+  - Sparkle (2.9.6)
+
+DEPENDENCIES:
+  - auto_updater_macos (from `Flutter/ephemeral/.symlinks/plugins/auto_updater_macos/macos`)
+  - FlutterMacOS (from `Flutter/ephemeral`)
+  - git2dart_binaries (from `Flutter/ephemeral/.symlinks/plugins/git2dart_binaries/macos`)
+
+SPEC REPOS:
+  trunk:
+    - Sparkle
+
+EXTERNAL SOURCES:
+  auto_updater_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/auto_updater_macos/macos
+  FlutterMacOS:
+    :path: Flutter/ephemeral
+  git2dart_binaries:
+    :path: Flutter/ephemeral/.symlinks/plugins/git2dart_binaries/macos
+
+SPEC CHECKSUMS:
+  auto_updater_macos: 3e3462c418fe4e731917eacd8d28eef7af84086d
+  FlutterMacOS: c232990155153907050900a2e175c7773903ba4e
+  git2dart_binaries: 3374a61f5c242069747ab1de5ab3689a7a8de2a4
+  Sparkle: b8c9cf4ced217ffc708a1ca5f988a7ba877658db
+
+PODFILE CHECKSUM: 034aa7415ba6e184574a6f4f84118db6f21ef0f9
+
+COCOAPODS: 1.16.2

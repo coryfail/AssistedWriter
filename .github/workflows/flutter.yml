@@ -1,0 +1,91 @@
+name: Flutter platforms
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main, flutter-cross-platform]
+    paths:
+      - 'flutter_app/**'
+      - '.github/workflows/flutter.yml'
+      - 'electron/book.cjs'
+      - 'electron/templates/**'
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: flutter_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          cache: true
+      - run: flutter pub get
+      - name: Make native Git DLLs available to Windows tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $cache = if ($env:PUB_CACHE) { $env:PUB_CACHE } else { "$env:LOCALAPPDATA\Pub\Cache" }
+          $native = Join-Path $cache 'hosted\pub.dev\git2dart_binaries-1.14.0\windows'
+          Add-Content $env:GITHUB_PATH $native
+      - run: flutter analyze
+      - run: flutter test
+      - name: Build macOS release
+        if: runner.os == 'macOS'
+        run: |
+          flutter build macos --release
+          ditto -c -k --sequesterRsrc --keepParent 'build/macos/Build/Products/Release/Assisted Writer.app' build/assisted-writer-macos.zip
+      - name: Build Windows release and installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          flutter build windows --release
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (!(Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          $version = [regex]::Match((Get-Content pubspec.yaml -Raw), '(?m)^version:\s*([0-9]+\.[0-9]+\.[0-9]+)').Groups[1].Value
+          & $iscc "/DAppVersion=$version" windows/installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath build/assisted-writer-windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flutter-${{ runner.os }}-development
+          path: |
+            flutter_app/build/assisted-writer-*.zip
+            flutter_app/build/installers/*.exe
+
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: flutter_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          cache: true
+      - run: flutter pub get
+      - name: Compile iOS simulator and device targets
+        run: |
+          flutter build ios --simulator --debug
+          flutter build ios --release --no-codesign
+          ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app build/assisted-writer-ios-unsigned.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flutter-iOS-unsigned
+          path: flutter_app/build/assisted-writer-ios-unsigned.zip
