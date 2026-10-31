@@ -212,6 +212,10 @@ class _AssistantPanelState extends State<AssistantPanel> {
           ),
         if (report != null) ...[
           const Divider(),
+          Text(
+            'Report for ${(report['sent'] as Map?)?['chapter'] ?? report['chapterId']}',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
           if (report['action'] != 'brainstorm')
             MarkdownView(report['summary'] as String),
           for (final finding in report['findings'] as List)

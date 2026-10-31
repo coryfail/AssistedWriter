@@ -72,6 +72,6 @@ flutter build ios --simulator --debug
 flutter build ios --release --no-codesign
 ```
 
-Tests use temporary book repositories and mocked OpenAI responses. They do not send manuscripts to an external service or incur API charges. Tests include local-remote push/fetch/pull through both Git backends. Windows validation is provided by `.github/workflows/flutter.yml` and still needs an actual Windows CI or local run.
+Tests use temporary book repositories and mocked OpenAI responses. They do not send manuscripts to an external service or incur API charges. Tests include local-remote push/fetch/pull through both Git backends. Windows analysis, tests, release compilation, and installer compilation passed in the cross-platform CI run. Interactive Windows installation and real-account integration checks remain release acceptance steps.
 
 On macOS, building inside a synced/file-provider Documents folder can attach Finder metadata to generated bundles and make code signing fail. A source copy outside that folder (for example under `/private/tmp`) avoids that workspace-specific issue; this was used for native build verification here.

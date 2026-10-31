@@ -1,6 +1,6 @@
 # Assisted Writer
 
-An author-led fiction writing studio being migrated from Electron to Flutter for **macOS, Windows, and iOS** on branch `flutter-cross-platform`.
+An author-led fiction writing studio built with Flutter for **macOS, Windows, and iOS** on branch `flutter-cross-platform`.
 
 The Flutter app lives in [`flutter_app/`](flutter_app/README.md). It includes the rich Markdown editor, book and chapter management, notes/context and named story trackers, autosave and recovery, AI discussion and editorial approval workflows, Git, DOCX/EPUB/PDF exports, secure settings, and native platform integration.
 

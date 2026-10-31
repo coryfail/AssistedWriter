@@ -21,12 +21,18 @@ void main() {
       final width =
           (double.parse((entry['size'] as String).split('x').first) * scale)
               .round();
-      final resized = img.copyResize(
+      var resized = img.copyResize(
         source,
         width: width,
         height: width,
         interpolation: img.Interpolation.average,
       );
+      if (root.startsWith('ios/')) {
+        final opaque = img.Image(width: width, height: width, numChannels: 3);
+        img.fill(opaque, color: img.ColorRgb8(250, 248, 243));
+        img.compositeImage(opaque, resized);
+        resized = opaque;
+      }
       File('$root/${entry['filename']}')
           .writeAsBytesSync(img.encodePng(resized));
     }
