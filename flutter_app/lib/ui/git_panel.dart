@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../book/session.dart';
@@ -32,6 +34,30 @@ class _GitPanelState extends State<GitPanel> {
 
   Future<GitService> service({bool credentials = false}) async {
     final settings = widget.session.settings;
+    if (Platform.isIOS || Platform.isAndroid) {
+      final account = settings.githubAccount;
+      if (credentials && account == null) {
+        throw StateError(
+          'Open Book library and sign in to GitHub before syncing.',
+        );
+      }
+      final login = account?['login'] as String? ?? 'writer';
+      return GitService(
+        widget.session.store!.root,
+        native: true,
+        name: settings.gitName.isNotEmpty
+            ? settings.gitName
+            : account?['name'] as String? ?? login,
+        email: settings.gitEmail.isNotEmpty
+            ? settings.gitEmail
+            : account == null
+            ? 'writer@localhost'
+            : '${account['id']}+$login@users.noreply.github.com',
+        username: login,
+        token: credentials ? await settings.githubToken() : '',
+        caFile: credentials ? await settings.certificatePath() : '',
+      );
+    }
     return GitService(
       widget.session.store!.root,
       name: settings.gitName,

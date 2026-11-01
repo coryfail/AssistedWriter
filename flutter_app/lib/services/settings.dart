@@ -12,6 +12,32 @@ import 'package:flutter/services.dart';
 class AppSettings {
   AppSettings(this.preferences);
   final SharedPreferences preferences;
+  Map<String, dynamic>? get githubAccount {
+    final raw = preferences.getString('githubAccount');
+    return raw == null
+        ? null
+        : Map<String, dynamic>.from(jsonDecode(raw) as Map);
+  }
+
+  Future<String> githubToken() async =>
+      await secure.read(key: 'github-oauth-token') ?? '';
+  Future<void> connectGitHub(String token, Map<String, dynamic> account) async {
+    await secure.write(key: 'github-oauth-token', value: token);
+    await preferences.setString(
+      'githubAccount',
+      jsonEncode({
+        'id': account['id'],
+        'login': account['login'],
+        'name': account['name'],
+      }),
+    );
+  }
+
+  Future<void> disconnectGitHub() async {
+    await secure.delete(key: 'github-oauth-token');
+    await preferences.remove('githubAccount');
+  }
+
   static final secure = Platform.isMacOS
       ? const FlutterSecureStorage(
           mOptions: MacOsOptions(usesDataProtectionKeychain: false),

@@ -185,95 +185,100 @@ class _SettingsPageState extends State<SettingsPage> {
               decoration: const InputDecoration(labelText: 'Git author email'),
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: gitHost,
-              decoration: const InputDecoration(
-                labelText: 'Git credential hostname',
-                helperText: 'Credentials are used only for this server.',
+            if (!Platform.isIOS && !Platform.isAndroid) ...[
+              TextField(
+                controller: gitHost,
+                decoration: const InputDecoration(
+                  labelText: 'Git credential hostname',
+                  helperText: 'Credentials are used only for this server.',
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: gitUser,
-              decoration: const InputDecoration(
-                labelText: 'Git HTTPS username',
+              const SizedBox(height: 12),
+              TextField(
+                controller: gitUser,
+                decoration: const InputDecoration(
+                  labelText: 'Git HTTPS username',
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: tokenInput,
-              obscureText: true,
-              autocorrect: false,
-              enableSuggestions: false,
-              decoration: const InputDecoration(
-                labelText: 'New Git HTTPS token',
-                helperText: 'Leave blank to keep the saved token.',
+              const SizedBox(height: 12),
+              TextField(
+                controller: tokenInput,
+                obscureText: true,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: const InputDecoration(
+                  labelText: 'New Git HTTPS token',
+                  helperText: 'Leave blank to keep the saved token.',
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            ExpansionTile(
-              title: const Text('SSH key authentication'),
-              children: [
-                TextField(
-                  controller: publicKey,
-                  decoration: const InputDecoration(
-                    labelText: 'SSH public key',
+              const SizedBox(height: 8),
+              ExpansionTile(
+                title: const Text('SSH key authentication'),
+                children: [
+                  TextField(
+                    controller: publicKey,
+                    decoration: const InputDecoration(
+                      labelText: 'SSH public key',
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: privateKeyInput,
-                  obscureText: true,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  decoration: const InputDecoration(
-                    labelText: 'New SSH private key',
-                    helperText: 'Paste the full OpenSSH key. Leave blank to keep the saved key.',
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: privateKeyInput,
+                    obscureText: true,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    decoration: const InputDecoration(
+                      labelText: 'New SSH private key',
+                      helperText: 'Paste the full OpenSSH key. Leave blank to keep the saved key.',
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: passphraseInput,
-                  obscureText: true,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  decoration: const InputDecoration(
-                    labelText: 'New SSH key passphrase',
-                    helperText: 'Leave blank to keep the saved passphrase.',
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: passphraseInput,
+                    obscureText: true,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    decoration: const InputDecoration(
+                      labelText: 'New SSH key passphrase',
+                      helperText: 'Leave blank to keep the saved passphrase.',
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: fingerprint,
-                  autocorrect: false,
-                  decoration: const InputDecoration(
-                    labelText: 'Server SHA256 host-key fingerprint',
-                    helperText:
-                        'Use the fingerprint published by your Git server.',
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: fingerprint,
+                    autocorrect: false,
+                    decoration: const InputDecoration(
+                      labelText: 'Server SHA256 host-key fingerprint',
+                      helperText:
+                          'Use the fingerprint published by your Git server.',
+                    ),
                   ),
-                ),
-              ],
-            ),
-            TextButton(
-              onPressed: busy
-                  ? null
-                  : () async {
-                      try {
-                        await widget.settings.clearGitCredentials();
-                        if (mounted) {
-                          setState(
-                            () => status = 'Saved Git credentials removed.',
-                          );
+                ],
+              ),
+              TextButton(
+                onPressed: busy
+                    ? null
+                    : () async {
+                        try {
+                          await widget.settings.clearGitCredentials();
+                          if (mounted) {
+                            setState(
+                              () => status = 'Saved Git credentials removed.',
+                            );
+                          }
+                        } catch (e) {
+                          if (mounted) setState(() => status = '$e');
                         }
-                      } catch (e) {
-                        if (mounted) setState(() => status = '$e');
-                      }
-                    },
-              child: const Text('Remove saved Git credentials'),
-            ),
-            Text(
-              Platform.isIOS ? 'iOS Git uses these HTTPS or SSH credentials.' : 'Desktop Git uses your installed Git client and its configured credentials. Windows uses these native credentials if Git is not installed.',
-            ),
+                      },
+                child: const Text('Remove saved Git credentials'),
+              ),
+              Text(
+                'Desktop Git uses your installed Git client and its configured credentials. Windows uses these native credentials if Git is not installed.',
+              ),
+            ] else
+              const Text(
+                'Manage your GitHub sign-in in Book library. Leave author fields blank to use your GitHub identity.',
+              ),
             const SizedBox(height: 16),
             FilledButton(
               onPressed: busy ? null : save,

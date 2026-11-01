@@ -81,9 +81,11 @@ jobs:
           cache: true
       - run: flutter pub get
       - name: Compile iOS simulator and device targets
+        env:
+          GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
         run: |
-          flutter build ios --simulator --debug
-          flutter build ios --release --no-codesign
+          flutter build ios --simulator --debug --dart-define=GITHUB_CLIENT_ID="$GITHUB_CLIENT_ID"
+          flutter build ios --release --no-codesign --dart-define=GITHUB_CLIENT_ID="$GITHUB_CLIENT_ID"
           ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app build/assisted-writer-ios-unsigned.zip
       - uses: actions/upload-artifact@v4
         with:

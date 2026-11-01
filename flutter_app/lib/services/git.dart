@@ -35,6 +35,23 @@ class GitService {
   bool _nativeFallback = false;
   bool get useNative => native || Platform.isIOS || _nativeFallback;
 
+  /// Clone before validating the book: its manifest does not exist locally yet.
+  Future<void> clone(String url) async {
+    final uri = Uri.parse(url);
+    if (uri.scheme != 'https' ||
+        uri.host != credentialHost ||
+        uri.userInfo.isNotEmpty) {
+      throw ArgumentError(
+        'Clone requires an HTTPS URL on the credential host.',
+      );
+    }
+    if (await FileSystemEntity.type(root, followLinks: false) !=
+        FileSystemEntityType.notFound) {
+      throw StateError('The clone destination already exists.');
+    }
+    await _native('clone', {'url': url});
+  }
+
   Future<dynamic> _native(
     String action, [
     Map<String, dynamic> args = const {},
@@ -382,6 +399,28 @@ Future<dynamic> _nativeOperation(Map<String, dynamic> input) async {
   final root = input['root'] as String;
   final action = input['action'] as String;
   try {
+    if (action == 'clone') {
+      final repo = g.Repository.clone(
+        url: input['url'] as String,
+        localPath: root,
+        callbacks: g.Callbacks(
+          credentials: (input['token'] as String).isEmpty
+              ? null
+              : g.UserPass(
+                  username: (input['username'] as String).isEmpty
+                      ? 'git'
+                      : input['username'] as String,
+                  password: input['token'] as String,
+                ),
+          certificateCheck: (_, host, {required valid}) =>
+              valid &&
+              host.toLowerCase() ==
+                  (input['credentialHost'] as String).toLowerCase(),
+        ),
+      );
+      repo.free();
+      return null;
+    }
     if (action == 'init') {
       final repo = g.Repository.init(path: root, initialHead: 'main');
       repo.free();

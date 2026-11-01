@@ -18,7 +18,7 @@ Apple builds require Xcode and CocoaPods. iPhone installation and App Store/Test
 
 ## Writing and book compatibility
 
-Open an existing book folder or create a new one. `book.json` keeps the authoritative chapter order and stable IDs. Chapters, notes, context, named trackers, editorial reports, and exports retain the existing `assisted-writer-1` format. The Flutter tests include opening a newly created Flutter book through the existing Node reader.
+On macOS and Windows, open an existing book folder or create a new one. On iOS, use the GitHub book library described below. `book.json` keeps the authoritative chapter order and stable IDs. Chapters, notes, context, named trackers, editorial reports, and exports retain the existing `assisted-writer-1` format. The Flutter tests include opening a newly created Flutter book through the existing Node reader.
 
 The editor supports formatted Markdown, bold, italic, strikethrough, headings, quotes, lists, scene breaks, undo/redo, selection, copy/paste, and source mode. Unsupported structures and tracker markers default to source mode to preserve their text. macOS selection menus include system spelling suggestions. External writing-assistant integration depends on that assistant's support for Flutter accessibility and the operating system.
 
@@ -38,7 +38,26 @@ Mac recent-book paths are imported from the old app when available. The Electron
 
 The panel provides initialization, status, diffs, selected-file commits, branch creation/switching, origin setup, fetch, push, fast-forward-only pull, and editable AI commit-message drafts. Pending writing is saved first. Branch changes and pulls require a clean working tree. Unrelated staged files are preserved by selected-file commits.
 
-macOS and Windows prefer the installed Git client and its credential helpers. Windows falls back to bundled libgit2 when Git is unavailable. iOS uses libgit2. Native credentials in Settings support HTTPS tokens and SSH key pairs. Credentials are scoped to the configured server hostname. SSH connections use the server's published SHA256 host-key fingerprint when a native `known_hosts` trust decision is unavailable. Private keys, passphrases, and tokens stay in secure storage. Desktop Git continues to support configured SSH agents and credential helpers.
+macOS and Windows prefer the installed Git client and its credential helpers. Windows falls back to bundled libgit2 when Git is unavailable. Native credentials in desktop Settings support HTTPS tokens and SSH key pairs. Credentials are scoped to the configured server hostname. SSH connections use the server's published SHA256 host-key fingerprint when a native `known_hosts` trust decision is unavailable. Private keys, passphrases, and tokens stay in secure storage. Desktop Git continues to support configured SSH agents and credential helpers. iOS uses libgit2 with its GitHub library account.
+
+### Mobile GitHub book library
+
+Mobile opens directly to **Your book library**, without a folder picker. Sign in, browse/search repositories (including private and shared repositories), and select one to clone it into persistent app-private storage. Existing repositories must have `book.json`, `chapters/`, and `notes/` at their root. Older books receive the same migrations as desktop. Downloaded books work offline and remain available after sign-out. Previously opened mobile books remain in the library's history.
+
+The **+** button creates a local book and offers to create/upload a private repository under the signed-in account. Canceling the repository dialog keeps the local book. Offline creation works too. An interrupted upload remains marked **Upload pending**; use its upload button to retry. Once the remote has been recorded, retries reuse it and any existing initial commit. If GitHub accepted repository creation but the connection failed before the app received its response, the local book is still safe; choose another repository name on retry or recover the empty repository on GitHub. No remote repositories are deleted automatically.
+
+Editing autosaves locally. Use **Book Git** to commit selected changes, pull updates, and push commits explicitly. Sign-out removes the app's saved GitHub token, not books or drafts; revoke authorization on GitHub to invalidate the grant itself. GitHub tokens are stored separately from desktop Git credentials and are never stored in a clone or remote URL.
+
+Browser sign-in uses GitHub's [OAuth device flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow). Register an OAuth app at [GitHub developer settings](https://github.com/settings/developers), enable **Device Flow**, and supply its public client ID (never its client secret):
+
+```sh
+flutter run -d <ios-device-id> --dart-define=GITHUB_CLIENT_ID=<public-client-id>
+flutter build ios --release --dart-define=GITHUB_CLIENT_ID=<public-client-id>
+```
+
+Set the repository Actions variable `GITHUB_CLIENT_ID` for CI iOS builds. A device-only flow does not use a callback, though GitHub's registration form still requires a callback URL; use a URL under your app's own website. Sign-in requests `repo` scope to read/write private book repositories. Organization SSO or OAuth-app restrictions may require additional approval from the organization. The app displays a code, opens GitHub in the browser, respects polling intervals and slow-down responses, and allows cancellation.
+
+**Connect with an access token** is also available, including in development builds without a client ID. A classic token needs `repo` scope for private books. Fine-grained tokens need access to the selected repositories with Contents read/write; creating repositories additionally needs the relevant account repository-creation permission. See GitHub's [repository API permissions](https://docs.github.com/en/rest/repos/repos#create-a-repository-for-the-authenticated-user). Never place a token in a build flag or source file.
 
 The macOS CocoaPods integration intentionally omits the unused mobile Git dylib, so that upstream binary does not raise the desktop app's minimum OS version.
 

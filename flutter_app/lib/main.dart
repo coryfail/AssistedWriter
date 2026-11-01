@@ -21,6 +21,7 @@ import 'ui/dialogs.dart';
 import 'ui/git_panel.dart';
 import 'ui/tracker_editor.dart';
 import 'ui/settings_page.dart';
+import 'ui/mobile_library.dart';
 
 bool get desktop => Platform.isMacOS || Platform.isWindows || Platform.isLinux;
 Future<void> main() async {
@@ -167,6 +168,26 @@ class _WriterHomeState extends State<WriterHome> with WindowListener {
 
   Future<void> openBook([String? root]) async {
     try {
+      if (!desktop && root == null) {
+        if (!await session.flush() || !mounted) return;
+        scaffold.currentState?.closeDrawer();
+        final selected = await Navigator.of(context).push<String>(
+          MaterialPageRoute(
+            builder: (context) => Scaffold(
+              appBar: AppBar(title: const Text('Book library')),
+              body: MobileLibraryView(
+                settings: widget.settings,
+                templates: widget.templates,
+                onOpen: (root) async => Navigator.of(context).pop(root),
+              ),
+            ),
+          ),
+        );
+        if (selected != null && !await session.activate(selected)) {
+          message(session.error ?? 'Could not open this book.');
+        }
+        return;
+      }
       final selected = root ?? await (widget.pickFolder ?? BookFolders.pick)();
       if (selected != null) await session.activate(selected);
     } catch (e) {
@@ -175,6 +196,7 @@ class _WriterHomeState extends State<WriterHome> with WindowListener {
   }
 
   Future<void> newBook() async {
+    if (!desktop) return openBook();
     final values = await editFields(context, 'New book', {
       'Title': '',
       'Author': '',
@@ -292,7 +314,7 @@ class _WriterHomeState extends State<WriterHome> with WindowListener {
         ),
         ListTile(
           leading: const Icon(Icons.folder_open_outlined),
-          title: const Text('Open book'),
+          title: Text(desktop ? 'Open book' : 'Book library'),
           onTap: session.busy ? null : () => openBook(),
         ),
         ListTile(
@@ -300,7 +322,7 @@ class _WriterHomeState extends State<WriterHome> with WindowListener {
           title: const Text('New book'),
           onTap: session.busy ? null : newBook,
         ),
-        if (book == null) ...[
+        if (book == null && desktop) ...[
           const Divider(),
           const Padding(
             padding: EdgeInsets.all(12),
@@ -316,7 +338,7 @@ class _WriterHomeState extends State<WriterHome> with WindowListener {
               ),
               onTap: () => openBook(root),
             ),
-        ] else ...[
+        ] else if (book != null) ...[
           const Divider(),
           ListTile(
             title: Text(
@@ -482,6 +504,17 @@ class _WriterHomeState extends State<WriterHome> with WindowListener {
 
   Widget editor() {
     if (session.book == null) {
+      if (!desktop) {
+        return MobileLibraryView(
+          settings: widget.settings,
+          templates: widget.templates,
+          onOpen: (root) async {
+            if (!await session.activate(root)) {
+              throw StateError(session.error ?? 'Could not open this book.');
+            }
+          },
+        );
+      }
       return Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 460),
