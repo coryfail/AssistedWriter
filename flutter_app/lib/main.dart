@@ -69,6 +69,7 @@ class AssistedWriterApp extends StatelessWidget {
     ],
     supportedLocales: const [Locale('en')],
     theme: ThemeData(
+      brightness: Brightness.light,
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
         seedColor: const Color(0xff6d6252),

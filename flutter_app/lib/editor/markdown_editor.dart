@@ -202,7 +202,8 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
                 minLines: null,
                 maxLines: null,
                 textAlignVertical: TextAlignVertical.top,
-                style: const TextStyle(
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontFamily: 'monospace',
                   fontSize: 15,
                   height: 1.6,
@@ -232,12 +233,17 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
                   placeholder: 'Write your story…',
                   enableScribble: true,
                   embedBuilders: const [SceneBreakBuilder()],
-                  customStyles: const q.DefaultStyles(
+                  customStyles: q.DefaultStyles(
                     paragraph: q.DefaultTextBlockStyle(
-                      TextStyle(fontFamily: 'Book', fontSize: 17, height: 1.65),
-                      q.HorizontalSpacing(0, 0),
-                      q.VerticalSpacing(0, 14),
-                      q.VerticalSpacing(0, 0),
+                      TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
+                        fontFamily: 'Book',
+                        fontSize: 17,
+                        height: 1.65,
+                      ),
+                      const q.HorizontalSpacing(0, 0),
+                      const q.VerticalSpacing(0, 14),
+                      const q.VerticalSpacing(0, 0),
                       null,
                     ),
                   ),
