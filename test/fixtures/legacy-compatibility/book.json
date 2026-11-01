@@ -1,0 +1,21 @@
+{
+  "format": "assisted-writer-1",
+  "title": "Legacy Compatibility",
+  "author": "Fixture Author",
+  "genre": "Fiction",
+  "chapters": [
+    {
+      "id": "legacy-chapter-1",
+      "title": "Chapter 1",
+      "file": "chapter-01.md",
+      "notesFile": "chapter-01.notes.md"
+    },
+    {
+      "id": "legacy-chapter-2",
+      "title": "Chapter 2",
+      "file": "chapter-1793539677519.md",
+      "notesFile": "chapter-1793539677519.notes.md"
+    }
+  ],
+  "createdAt": "2026-10-01T12:00:00.000Z"
+}

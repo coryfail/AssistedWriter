@@ -5,11 +5,6 @@ on:
   pull_request:
   push:
     branches: [main, flutter-cross-platform]
-    paths:
-      - 'flutter_app/**'
-      - '.github/workflows/flutter.yml'
-      - 'electron/book.cjs'
-      - 'electron/templates/**'
 
 permissions:
   contents: read
@@ -22,14 +17,8 @@ jobs:
         os: [macos-26, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: flutter_app
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.9'
@@ -64,15 +53,12 @@ jobs:
         with:
           name: flutter-${{ runner.os }}-development
           path: |
-            flutter_app/build/assisted-writer-*.zip
-            flutter_app/build/installers/*.exe
+            build/assisted-writer-*.zip
+            build/installers/*.exe
 
   ios:
     runs-on: macos-26
     timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: flutter_app
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -90,4 +76,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: flutter-iOS-unsigned
-          path: flutter_app/build/assisted-writer-ios-unsigned.zip
+          path: build/assisted-writer-ios-unsigned.zip
