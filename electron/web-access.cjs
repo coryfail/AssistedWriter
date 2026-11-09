@@ -4,6 +4,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { randomBytes, randomInt, timingSafeEqual } = require("node:crypto");
 const book = require("./book.cjs");
+const { sharedBookRequest } = require("./shared-book-api.cjs");
 
 const WEB_PORT = 48731;
 const PAIR_MS = 5 * 60 * 1000;
@@ -12,7 +13,6 @@ const MAX_ATTEMPTS = 8;
 const MAX_SESSIONS = 8;
 const MAX_JSON = 3 * 1024 * 1024;
 const SESSION_COOKIE = "aw_session";
-const hash = /^[a-f0-9]{64}$/;
 const types = {
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -157,46 +157,18 @@ async function startWebAccess({ root, host, dist, port = WEB_PORT, onSave = () =
       setCookie(res, "", 0);
       return json(res, 200, { paired: false });
     }
-    if (req.method === "GET" && route === "/api/book") {
-      const data = await book.withBookOperation(sharedRoot, (root) => {
+    const data = await sharedBookRequest(route, req.method, () => readJSON(req),
+      (operation) => book.withBookOperation(sharedRoot, (root) => {
         session(req);
         if (root !== sharedRoot) throw error(404, "The shared book moved.");
-        return book.sharedBook(root);
-      });
-      return json(res, 200, data);
-    }
-    const chapter = route.match(/^\/api\/chapters\/([^/]+)$/);
-    if (chapter && ["GET", "PUT"].includes(req.method)) {
-      let id;
-      try { id = decodeURIComponent(chapter[1]); } catch { throw error(400, "Invalid chapter."); }
-      if (!id || id.length > 256) throw error(400, "Invalid chapter.");
-      let draft;
-      if (req.method === "PUT") {
-        const { body, revision, manifestRevision } = await readJSON(req);
-        if (typeof body !== "string" || typeof revision !== "string" || typeof manifestRevision !== "string" ||
-            !hash.test(revision) || !hash.test(manifestRevision))
-          throw error(400, "A chapter and its original revision are required.");
-        draft = { body, revision, manifestRevision };
-      }
-      const data = await book.withBookOperation(sharedRoot, (root) => {
-        session(req);
-        if (root !== sharedRoot) throw error(404, "The shared book moved.");
-        return book.sharedChapter(root, id, draft);
-      });
-      if (draft) onSave(sharedRoot);
-      return json(res, 200, data);
-    }
-    throw error(404, "Page not found.");
+        return operation(root);
+      }), () => onSave(sharedRoot));
+    return json(res, 200, data);
   }
 
   const server = http.createServer({ headersTimeout: 8000, requestTimeout: 15000, keepAliveTimeout: 3000 }, (req, res) => {
     route(req, res).catch((cause) => {
       if (res.destroyed || res.headersSent) return;
-      if (cause.code === "BOOK_CONFLICT")
-        return json(res, 409, { error: "The saved chapter changed. Your browser draft has not been overwritten." });
-      if (cause.code === "CHAPTER_MISSING")
-        return json(res, 404, { error: "This chapter is no longer in the book." });
-      if (cause.code === "CHAPTER_TOO_LARGE") return json(res, 413, { error: cause.message });
       json(res, cause.status || 500, { error: cause.status ? cause.message : "The desktop could not access this book. Check the desktop app." });
     });
   });

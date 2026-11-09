@@ -56,7 +56,7 @@ export function WebAccessPanel({ api, bookTitle, beforeStart }) {
     {error && <p className="web-access-error" role="alert">{error}</p>}
     {!status ? <p>Checking network…</p> : status.enabled ? <>
       <p><strong>{status.bookTitle}</strong> {status.connected === false ? "is reconnecting" : "is shared"}. Keep this desktop app open and your computer awake.</p>
-      {status.mode === "remote" && <p>Open the private link in any browser. Anyone you give the full link can edit this book until you turn Web Access off.</p>}
+      {status.mode === "remote" && <p>Open the private link in any browser. Anyone with the full link can edit the manuscript, book notes, and chapter notes until you turn Web Access off.</p>}
       <label>{status.mode === "remote" ? "Private writing link" : "Open this address on the other device"}
         <input ref={urlInput} value={status.url} readOnly onFocus={(event) => event.target.select()} />
       </label>
@@ -73,7 +73,7 @@ export function WebAccessPanel({ api, bookTitle, beforeStart }) {
         <button className="primary" disabled={busy} onClick={() => run(api.webStop)}>Turn off Web Access</button>
       </div>
     </> : <>
-      <p>Open <strong>{bookTitle || "the current book"}</strong> from another device. Sharing turns off when you leave the book or close the desktop window.</p>
+      <p>Open the manuscript and notes for <strong>{bookTitle || "the current book"}</strong> from another device. Sharing turns off when you leave the book or close the desktop window.</p>
       <label>Connection
         <select value={mode} disabled={busy} onChange={(event) => setMode(event.target.value)}>
           <option value="lan">Home Wi-Fi</option>

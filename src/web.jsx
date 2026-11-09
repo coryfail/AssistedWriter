@@ -5,6 +5,7 @@ import { ArrowRight, BookOpen, ChevronDown, Download, LogOut, Radio } from "luci
 import { FormattingToolbar, manuscriptExtensions } from "./manuscript-editor.jsx";
 import { clearDraft, downloadDraft, readDraft, storeDraft } from "./drafts.mjs";
 import { browserRelay } from "./relay-browser.mjs";
+import { MarkdownDisplay } from "./markdown-display.mjs";
 import "./style.css";
 import "./web.css";
 
@@ -37,7 +38,9 @@ async function request(path, method = "GET", body) {
   } finally { clearTimeout(timeout); }
 }
 
-const chapterPath = (id) => "/api/chapters/" + encodeURIComponent(id);
+const views = { manuscript: "Manuscript", book: "Book notes", chapter: "Chapter notes" };
+const documentPath = (view, id) => view === "book" ? "/api/notes/book" :
+  (view === "chapter" ? "/api/notes/chapters/" : "/api/chapters/") + encodeURIComponent(id);
 const needsSource = (body) => /<\/?[a-z][^>]*>|<!--|!\[|^\s*(?:#|#{4,6}) |^\s*\|.*\||^\s*:?-{3,}:?\s*\||^\s*[-*+] \[[ xX]\]|\[\^[^\]]+\]/im.test(body);
 
 function Wordmark() {
@@ -71,21 +74,28 @@ function PairForm({ onPair, dismiss }) {
   </form>;
 }
 
-const Manuscript = forwardRef(function Manuscript({ bookId, chapter, locked, onUnauthorized }, ref) {
+const WritingPage = forwardRef(function WritingPage({ bookId, page, view, locked, onUnauthorized }, ref) {
+  const isNote = view !== "manuscript";
+  const kind = isNote ? "browser-notes:" + view : "browser";
+  const draftId = page.id;
+  const endpoint = documentPath(view, page.id);
+  const label = isNote ? "note" : "chapter";
+  const matches = (body, savedBody) => (isNote ? body : body.trim()) === savedBody;
   const [recovery] = useState(() => {
-    const draft = readDraft("browser", bookId, chapter.id);
-    if (draft?.body.trim() === chapter.body) return null;
+    const draft = readDraft(kind, bookId, draftId);
+    if (draft && matches(draft.body, page.body)) return null;
     return draft;
   });
-  const saved = useRef(chapter);
+  const saved = useRef(page);
   const draft = useRef(recovery);
   const writing = useRef(null);
   const timer = useRef(null);
-  const [version, setVersion] = useState(chapter);
-  const [source, setSource] = useState(() => needsSource(recovery?.body ?? chapter.body));
-  const [text, setText] = useState(recovery?.body ?? chapter.body);
+  const [version, setVersion] = useState(page);
+  const [source, setSource] = useState(() => isNote || needsSource(recovery?.body ?? page.body));
+  const [text, setText] = useState(recovery?.body ?? page.body);
   const [conflict, setConflict] = useState(Boolean(recovery &&
-    (recovery.revision !== chapter.revision || recovery.manifestRevision !== chapter.manifestRevision)));
+    (recovery.revision !== page.revision || recovery.manifestRevision !== page.manifestRevision)));
+  const conflictRef = useRef(conflict);
   const [message, setMessage] = useState(recovery ? "Draft recovered" : "Saved to desktop");
   const [error, setError] = useState("");
   const [storageWarning, setStorageWarning] = useState(false);
@@ -96,29 +106,36 @@ const Manuscript = forwardRef(function Manuscript({ bookId, chapter, locked, onU
   const [discard, setDiscard] = useState(false);
   const editor = useEditor({
     extensions: manuscriptExtensions(),
-    content: recovery?.body ?? chapter.body,
+    content: isNote ? "" : recovery?.body ?? page.body,
     contentType: "markdown",
     editorProps: { attributes: { spellcheck: "true", "aria-label": "Manuscript" } },
-    onUpdate: ({ editor: current }) => change(current.getMarkdown()),
+    onUpdate: ({ editor: current }) => {
+      if (!isNote) change(current.getMarkdown());
+    },
   });
 
   useEffect(() => {
-    if (!recovery && readDraft("browser", bookId, chapter.id)?.body.trim() === chapter.body)
-      clearDraft("browser", bookId, chapter.id);
-  }, [bookId, chapter.id, chapter.body, recovery]);
-  useEffect(() => { editor?.setEditable(!locked); }, [editor, locked]);
+    const stored = readDraft(kind, bookId, draftId);
+    if (!recovery && stored && matches(stored.body, page.body)) clearDraft(kind, bookId, draftId);
+  }, [kind, bookId, draftId, page.body, recovery]);
+  useEffect(() => { editor?.setEditable(!locked, false); }, [editor, locked]);
 
   function persist(value) {
-    setStorageWarning(!storeDraft("browser", bookId, chapter.id, value));
+    setStorageWarning(!storeDraft(kind, bookId, draftId, value));
+  }
+
+  function markConflict(value) {
+    conflictRef.current = value;
+    setConflict(value);
   }
 
   function change(body) {
     setText(body);
     setError("");
     clearTimeout(timer.current);
-    if (!conflict && !writing.current && body.trim() === saved.current.body) {
+    if (!conflictRef.current && !writing.current && matches(body, saved.current.body)) {
       draft.current = null;
-      clearDraft("browser", bookId, chapter.id);
+      clearDraft(kind, bookId, draftId);
       setDirty(false);
       setStorageWarning(false);
       setMessage("Saved to desktop");
@@ -130,7 +147,7 @@ const Manuscript = forwardRef(function Manuscript({ bookId, chapter, locked, onU
     };
     persist(draft.current);
     setDirty(true);
-    if (conflict) return;
+    if (conflictRef.current) return;
     setMessage("Unsaved changes");
     timer.current = setTimeout(() => save().catch(() => {}), 750);
   }
@@ -144,20 +161,20 @@ const Manuscript = forwardRef(function Manuscript({ bookId, chapter, locked, onU
     while (writing.current) await writing.current;
     const pending = draft.current;
     if (!pending) return;
-    if (conflict) throw new Error("Resolve the chapter conflict before continuing.");
+    if (conflictRef.current) throw new Error(`Resolve the ${label} conflict before continuing.`);
     setSaving(true);
     setMessage("Saving…");
     setError("");
     const operation = (async () => {
       try {
-        const next = await request(chapterPath(chapter.id), "PUT", {
+        const next = await request(endpoint, "PUT", {
           body: pending.body, revision: pending.revision, manifestRevision: pending.manifestRevision,
         });
         saved.current = next;
         setVersion(next);
         if (draft.current === pending) {
           draft.current = null;
-          clearDraft("browser", bookId, chapter.id);
+          clearDraft(kind, bookId, draftId);
           setDirty(false);
           setStorageWarning(false);
           setMessage("Saved to desktop");
@@ -168,7 +185,7 @@ const Manuscript = forwardRef(function Manuscript({ bookId, chapter, locked, onU
         }
       } catch (failure) {
         clearTimeout(timer.current);
-        if (failure.status === 409 || failure.status === 404) setConflict(true);
+        if (failure.status === 409 || failure.status === 404) markConflict(true);
         setMessage("Not saved to desktop");
         report(failure);
         throw failure;
@@ -193,8 +210,10 @@ const Manuscript = forwardRef(function Manuscript({ bookId, chapter, locked, onU
     saved.current = next;
     setVersion(next);
     setText(next.body);
-    if (needsSource(next.body)) setSource(true);
-    editor?.commands.setContent(next.body, { contentType: "markdown", emitUpdate: false });
+    if (!isNote) {
+      if (needsSource(next.body)) setSource(true);
+      editor?.commands.setContent(next.body, { contentType: "markdown", emitUpdate: false });
+    }
     setMessage("Saved to desktop");
   }
 
@@ -204,7 +223,7 @@ const Manuscript = forwardRef(function Manuscript({ bookId, chapter, locked, onU
       if (draft.current || writing.current || document.visibilityState === "hidden") return;
       const previous = saved.current;
       try {
-        const next = await request(chapterPath(chapter.id));
+        const next = await request(endpoint);
         if (live && !draft.current && !writing.current && saved.current === previous &&
             (next.revision !== previous.revision || next.manifestRevision !== previous.manifestRevision)) showSaved(next);
       } catch (failure) {
@@ -214,7 +233,7 @@ const Manuscript = forwardRef(function Manuscript({ bookId, chapter, locked, onU
     const interval = setInterval(refresh, 10000);
     window.addEventListener("focus", refresh);
     return () => { live = false; clearInterval(interval); window.removeEventListener("focus", refresh); };
-  }, [chapter.id, editor, onUnauthorized]);
+  }, [endpoint, editor, onUnauthorized]);
 
   useEffect(() => () => clearTimeout(timer.current), []);
   useEffect(() => {
@@ -227,7 +246,7 @@ const Manuscript = forwardRef(function Manuscript({ bookId, chapter, locked, onU
   async function compare() {
     setComparing(true);
     setError("");
-    try { setComparison(await request(chapterPath(chapter.id))); }
+    try { setComparison(await request(endpoint)); }
     catch (failure) { report(failure); }
     finally { setComparing(false); }
   }
@@ -235,12 +254,12 @@ const Manuscript = forwardRef(function Manuscript({ bookId, chapter, locked, onU
   async function useSaved() {
     setComparing(true);
     try {
-      const next = await request(chapterPath(chapter.id));
-      clearDraft("browser", bookId, chapter.id);
+      const next = await request(endpoint);
+      clearDraft(kind, bookId, draftId);
       draft.current = null;
       setDirty(false);
       setStorageWarning(false);
-      setConflict(false);
+      markConflict(false);
       setError("");
       setComparison(null);
       setDiscard(false);
@@ -248,12 +267,13 @@ const Manuscript = forwardRef(function Manuscript({ bookId, chapter, locked, onU
     } catch (failure) {
       if (failure.status === 404) {
         // The parent refreshes the chapter list when the user chooses another chapter.
-        clearDraft("browser", bookId, chapter.id);
+        clearDraft(kind, bookId, draftId);
         draft.current = null;
         setDirty(false);
         setStorageWarning(false);
-        setConflict(false);
+        markConflict(false);
         setDiscard(false);
+        setComparison(null);
         setMessage("Chapter removed on desktop");
         setError("Choose another chapter to continue.");
       } else report(failure);
@@ -261,6 +281,7 @@ const Manuscript = forwardRef(function Manuscript({ bookId, chapter, locked, onU
   }
 
   function toggleSource() {
+    if (isNote) { setSource(!source); return; }
     const body = draft.current?.body ?? saved.current.body;
     if (source && needsSource(body)) return;
     if (source) editor?.commands.setContent(body, { contentType: "markdown", emitUpdate: false });
@@ -268,65 +289,70 @@ const Manuscript = forwardRef(function Manuscript({ bookId, chapter, locked, onU
     setSource(!source);
   }
 
+  const download = () => downloadDraft(view === "chapter" ? `${version.title} notes` : version.title,
+    draft.current?.body ?? text, { includeHeading: !isNote });
+
   return <>
     <div className="web-write-tools">
-      {!source && <FormattingToolbar editor={locked ? null : editor} />}
+      {!isNote && !source && <FormattingToolbar editor={locked ? null : editor} />}
+      {isNote && <span className="web-note-caption">{source ? "Markdown editor" : "Reading view"}</span>}
       <button className="web-quiet web-source-switch" onClick={toggleSource}
-        disabled={source && needsSource(text)}>{source ? "Formatted view" : "Markdown source"}</button>
+        disabled={!isNote && source && needsSource(text)}>{isNote ? (source ? "Preview notes" : "Edit notes") :
+          (source ? "Formatted view" : "Markdown source")}</button>
     </div>
     <article className="web-paper" aria-label="Writing workspace">
-      <div className="web-paper-meta"><span>MANUSCRIPT</span><span>✦</span></div>
+      <div className="web-paper-meta"><span>{views[view]}</span><span aria-hidden="true">✦</span></div>
       <h1>{version.title}</h1>
       <div className="web-save-bar">
         <span role="status" aria-live="polite">{message}</span>
         <button className="web-quiet" disabled={!dirty || saving || conflict || locked}
           onClick={() => flush().catch(() => {})}>Save now</button>
       </div>
-      {source && needsSource(text) && <p className="web-subtle">Markdown source keeps this chapter’s formatting intact.</p>}
+      {!isNote && source && needsSource(text) && <p className="web-subtle">Markdown source keeps this chapter’s formatting intact.</p>}
       {storageWarning && <p className="web-error" role="alert">This browser couldn’t keep a recovery copy. Download your draft before leaving.</p>}
       {error && !conflict && <p className="web-error" role="alert">{error}</p>}
-      {conflict && <section className="web-conflict" aria-label="Chapter conflict">
-        <strong>The saved chapter changed.</strong>
-        <p>Your draft is still below. Review the saved text or download your draft before opening the saved version.</p>
+      {conflict && <section className="web-conflict" aria-label={`Saved ${label} conflict`}>
+        <strong>The saved {label} changed.</strong>
+        <p>Your draft is still here. Review the saved text or download your draft before opening the saved version.</p>
         {error && <p className="web-error" role="alert">{error}</p>}
         <div className="web-conflict-actions">
           <button className="web-quiet" onClick={compare} disabled={comparing}>{comparing ? "Checking…" : "Review saved text"}</button>
-          <button className="web-quiet" onClick={() => downloadDraft(version.title, draft.current?.body ?? text)}><Download size={15} /> Download draft</button>
-          <button className="web-quiet" onClick={() => setDiscard(true)}>Open saved chapter</button>
+          <button className="web-quiet" onClick={download}><Download size={15} /> Download draft</button>
+          <button className="web-quiet" onClick={() => setDiscard(true)}>Open saved {label}</button>
         </div>
-        {comparison && <pre aria-label="Saved chapter text">{comparison.body || "This chapter is blank."}</pre>}
+        {comparison && <pre aria-label={`Saved ${label} text`}>{comparison.body || `This ${label} is blank.`}</pre>}
         {discard && <div className="web-discard">
           <p>Discard the browser draft? Download it first to keep a copy.</p>
           <button className="web-quiet" onClick={() => setDiscard(false)}>Keep draft</button>
           <button className="web-quiet" onClick={useSaved} disabled={comparing}>Discard draft</button>
         </div>}
       </section>}
-      {source ? <textarea className="web-source" aria-label="Manuscript Markdown" value={text} readOnly={locked}
-        onChange={(event) => change(event.target.value)} spellCheck /> : <EditorContent editor={editor} className="prose-editor web-prose" />}
+      {source ? <textarea className={`web-source${isNote ? " web-note-source" : ""}`}
+        aria-label={isNote ? views[view] : "Manuscript Markdown"} value={text} readOnly={locked}
+        placeholder={isNote ? "Capture an idea…" : undefined}
+        onChange={(event) => change(event.target.value)} spellCheck /> : isNote
+        ? (text.trim() ? <MarkdownDisplay text={text} className="web-note-preview" /> : <p className="web-empty">No notes yet.</p>)
+        : <EditorContent editor={editor} className="prose-editor web-prose" />}
       <footer className="web-paper-footer">
         <span>{(text.trim().match(/\S+/g) || []).length.toLocaleString()} words</span>
-        {dirty && !conflict && <button className="web-quiet" onClick={() => downloadDraft(version.title, draft.current?.body ?? text)}><Download size={15} /> Download draft</button>}
+        {dirty && !conflict && <button className="web-quiet" onClick={download}><Download size={15} /> Download draft</button>}
       </footer>
     </article>
   </>;
 });
 
 function Workspace({ book, updateBook, logout, onUnauthorized }) {
-  const [chapter, setChapter] = useState(null);
+  const [selection, setSelection] = useState(() => ({
+    view: "manuscript", chapterId: book.chapters[0]?.id ?? "", page: null,
+  }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const writer = useRef(null);
   const loading = useRef(false);
+  const { view, chapterId, page } = selection;
 
   useEffect(() => {
-    if (!book.chapters.length) return;
-    let live = true;
-    request(chapterPath(book.chapters[0].id)).then((data) => { if (live) setChapter(data); }).catch((failure) => {
-      if (!live) return;
-      if (failure.status === 401) onUnauthorized();
-      setError(failure.message);
-    });
-    return () => { live = false; };
+    if (chapterId) open(view, chapterId);
   }, [book.id]);
 
   async function run(action) {
@@ -346,8 +372,13 @@ function Workspace({ book, updateBook, logout, onUnauthorized }) {
     }
   }
 
-  function open(id) {
-    run(async () => setChapter(await request(chapterPath(id))));
+  async function selectPage(nextView, id) {
+    const next = nextView === "book" || id ? await request(documentPath(nextView, id)) : null;
+    setSelection({ view: nextView, chapterId: id, page: next });
+  }
+
+  function open(nextView, id) {
+    run(() => selectPage(nextView, id));
   }
 
   function refreshChapters() {
@@ -357,10 +388,13 @@ function Workspace({ book, updateBook, logout, onUnauthorized }) {
         updateBook(latest);
         return;
       }
-      updateBook(latest);
-      if (!latest.chapters.some((entry) => entry.id === chapter?.id)) {
-        setChapter(latest.chapters.length ? await request(chapterPath(latest.chapters[0].id)) : null);
+      const nextId = latest.chapters.some((entry) => entry.id === chapterId) ? chapterId : latest.chapters[0]?.id ?? "";
+      if (view === "book") {
+        setSelection((current) => ({ ...current, chapterId: nextId }));
+      } else if (nextId !== chapterId || !page) {
+        await selectPage(view, nextId);
       }
+      updateBook(latest);
     });
   }
 
@@ -371,19 +405,30 @@ function Workspace({ book, updateBook, logout, onUnauthorized }) {
         <span className="web-kicker"><Radio size={14} /> SHARED FROM DESKTOP</span>
         <h2>{book.title}</h2>
         {book.author && <p>{book.author}</p>}
-        <label className="web-chapters">
-          <span><BookOpen size={17} /> Chapter</span>
-          <span className="web-select"><select disabled={busy || !book.chapters.length} value={chapter?.id || ""} onChange={(event) => open(event.target.value)}>
-            {!chapter && <option value="" disabled>Select a chapter</option>}
-            {book.chapters.map(({ id, title }) => <option value={id} key={id}>{title}</option>)}
-          </select><ChevronDown size={17} /></span>
-        </label>
-        <button className="web-quiet" onClick={refreshChapters} disabled={busy}>Refresh chapters</button>
+        {book.notesAvailable === true && <nav className="web-pages" aria-label="Writing pages">
+          {Object.entries(views).map(([key, title]) => <button key={key} className="web-page-button"
+            aria-pressed={view === key} disabled={busy || (key === "chapter" && !book.chapters.length)}
+            onClick={() => { if (view !== key || !page) open(key, chapterId); }}>{title}</button>)}
+        </nav>}
+        {view !== "book" && <>
+          <label className="web-chapters">
+            <span><BookOpen size={17} /> Chapter</span>
+            <span className="web-select"><select disabled={busy || !book.chapters.length} value={chapterId}
+              onChange={(event) => open(view, event.target.value)}>
+              {!chapterId && <option value="" disabled>Select a chapter</option>}
+              {book.chapters.map(({ id, title }) => <option value={id} key={id}>{title}</option>)}
+            </select><ChevronDown size={17} /></span>
+          </label>
+          <button className="web-quiet" onClick={refreshChapters} disabled={busy}>Refresh chapters</button>
+        </>}
         {error && <p className="web-error" role="alert">{error}</p>}
       </aside>
-      <div className="web-writing">{chapter
-        ? <Manuscript key={chapter.id} ref={writer} bookId={book.id} chapter={chapter} locked={busy} onUnauthorized={onUnauthorized} />
-        : <p className="web-empty">{book.chapters.length ? "Select a chapter to begin." : "Add a chapter on the desktop to start writing."}</p>}</div>
+      <div className="web-writing">{page
+        ? <WritingPage key={documentPath(view, page.id)} ref={writer} bookId={book.id} page={page} view={view}
+          locked={busy} onUnauthorized={onUnauthorized} />
+        : <p className="web-empty">{busy ? "Opening…" : book.chapters.length
+          ? "Choose a chapter or refresh the chapter list to try again."
+          : "Add a chapter on the desktop to start writing."}</p>}</div>
     </div>
   </main>;
 }

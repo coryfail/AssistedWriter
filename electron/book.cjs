@@ -308,29 +308,29 @@ async function saveChapter(root, id, body, title, expectedRevision, expectedMani
 
 const manuscriptLimit = 2 * 1024 * 1024;
 
-// Web access is read-only for the manifest, and cannot follow links or request
-// notes, arbitrary paths, or other desktop resources.
-async function readSharedFile(root, file) {
+// Web access reads only the manifest, chapters, and designated note files.
+async function readSharedFile(root, file, limit = manuscriptLimit, tooLarge) {
   if (await fs.realpath(root) !== root || await fs.realpath(path.dirname(file)) !== path.dirname(file))
     throw new Error("A shared book cannot use linked manuscript folders.");
   const info = await fs.lstat(file);
-  if (!info.isFile() || info.nlink !== 1 || info.size > manuscriptLimit)
-    throw new Error("The shared book file is unavailable or too large.");
+  const check = (info) => {
+    if (!info.isFile() || info.nlink !== 1) throw new Error("The shared book file is unavailable.");
+    if (info.size > limit) throw tooLarge ?? new Error("The shared book file is too large.");
+  };
+  check(info);
   const handle = await fs.open(file, constants.O_RDONLY | (constants.O_NOFOLLOW || 0) | (constants.O_NONBLOCK || 0));
   try {
-    const opened = await handle.stat();
-    if (!opened.isFile() || opened.nlink !== 1 || opened.size > manuscriptLimit)
-      throw new Error("The shared book file is unavailable or too large.");
+    check(await handle.stat());
     const chunks = [];
     let total = 0;
-    while (total <= manuscriptLimit) {
-      const buffer = Buffer.allocUnsafe(Math.min(65536, manuscriptLimit + 1 - total));
+    while (total <= limit) {
+      const buffer = Buffer.allocUnsafe(Math.min(65536, limit + 1 - total));
       const { bytesRead } = await handle.read(buffer);
       if (!bytesRead) return Buffer.concat(chunks, total).toString("utf8");
       total += bytesRead;
       chunks.push(buffer.subarray(0, bytesRead));
     }
-    throw new Error("The shared book file is too large.");
+    throw tooLarge ?? new Error("The shared book file is too large.");
   } finally { await handle.close(); }
 }
 
@@ -357,6 +357,7 @@ async function sharedBook(root) {
   const { data } = await sharedManifest(root);
   return {
     id: revision(root),
+    notesAvailable: true,
     title: String(data.title || "Untitled book"),
     author: String(data.author || ""),
     chapters: data.chapters.map(({ id, title }) => ({ id, title })),
@@ -382,6 +383,34 @@ async function sharedChapter(root, id, draft) {
     });
   }
   return { id, title: chapter.title, body: withoutHeading(raw), revision: revision(raw), manifestRevision: manifest.revision };
+}
+
+async function sharedNotes(root, id, draft) {
+  const manifest = await sharedManifest(root);
+  const chapter = id === null ? null : manifest.data.chapters.find((item) => item.id === id);
+  if (id !== null && !chapter)
+    throw Object.assign(new Error("This chapter is no longer in the book."), { status: 404 });
+  if (chapter && /\.context\.md$/i.test(chapter.notesFile))
+    throw new Error("The chapter notes file cannot also be an AI context file.");
+  const file = chapter ? notePath(root, chapter) : referencePath(root, "book");
+  // Even with JSON escaping and encryption overhead a note fits through both transports.
+  const limit = 500 * 1024;
+  const tooLarge = Object.assign(new Error("This note exceeds the 500 KiB browser limit. Open it on the desktop."), { status: 413 });
+  const readCurrent = () => readSharedFile(root, file, limit, tooLarge);
+  let body = await readCurrent();
+  if (draft) {
+    if (manifest.revision !== draft.manifestRevision || revision(body) !== draft.revision)
+      throw externalChangeError();
+    body = draft.body;
+    if (Buffer.byteLength(body) > limit) throw tooLarge;
+    await atomicWrite(file, body, draft.revision, async () => {
+      if ((await sharedManifest(root)).revision !== manifest.revision) throw externalChangeError();
+      return readCurrent();
+    });
+  }
+  return {
+    id, title: chapter?.title ?? "Book notes", body, revision: revision(body), manifestRevision: manifest.revision,
+  };
 }
 
 async function saveNotes(root, id, content, expectedRevision) {
@@ -537,6 +566,7 @@ module.exports = {
   withBookOperation,
   sharedBook,
   sharedChapter,
+  sharedNotes,
   createBook,
   readBook,
   addChapter,

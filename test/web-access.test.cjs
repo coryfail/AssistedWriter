@@ -100,7 +100,7 @@ test("one-time pairing, attempt lockout, expiry, logout and desktop revocation",
   assert.equal((await request("/api/book", { cookie: third })).status, 401);
 });
 
-test("saves real Markdown, refuses stale revisions, and never returns book paths or notes", async (t) => {
+test("saves real Markdown, refuses stale revisions, and never returns book paths", async (t) => {
   const notices = [];
   const { root, id, request, pair, chapter } = await setup(t, { onSave: (saved) => notices.push(saved) });
   const cookie = await pair();
@@ -123,6 +123,63 @@ test("saves real Markdown, refuses stale revisions, and never returns book paths
   assert.equal(notices.length, 1);
   assert.equal((await request(chapter, { method: "PUT", cookie, body: saveBody(initial, "A stale draft.") })).status, 409);
   assert.equal((await book.readBook(root)).chapters[0].body, "The **browser** arrived.");
+});
+
+test("paired browsers edit book and chapter notes with independent revisions", async (t) => {
+  const notices = [];
+  const { root, id, request, pair } = await setup(t, { onSave: (saved) => notices.push(saved) });
+  const bookNotes = "/api/notes/book";
+  const chapterNotes = "/api/notes/chapters/" + id;
+  assert.equal((await request(bookNotes)).status, 401);
+  assert.equal((await request(chapterNotes, { method: "PUT", body: {} })).status, 401);
+  const cookie = await pair();
+  const library = await (await request("/api/book", { cookie })).json();
+  assert.equal(library.notesAvailable, true);
+  assert.ok(!JSON.stringify(library).includes("Notes for Chapter"));
+  const currentBook = await (await request(bookNotes, { cookie })).json();
+  const currentChapter = await (await request(chapterNotes, { cookie })).json();
+  assert.equal(currentBook.body, "# Book Notes\n\n");
+  assert.equal(currentChapter.body, "# Notes for Chapter 1\n\n");
+  const bookText = "# Book Notes\n\n- Keep the letter sealed.\n\n";
+  const save = (endpoint, revision, body, options = {}) =>
+    request(endpoint, { cookie, method: "PUT", body: saveBody(revision, body), ...options });
+  assert.equal((await save(bookNotes, currentBook, bookText, { origin: "http://other.example" })).status, 403);
+  assert.equal((await save(bookNotes, currentBook, "x".repeat(500 * 1024 + 1))).status, 413);
+  assert.equal((await save(bookNotes, currentBook, bookText)).status, 200);
+  await book.withBookOperation(root, () => book.saveNotes(root, id, "Desktop note", currentChapter.revision));
+  assert.equal((await save(chapterNotes, currentChapter, "Stale browser draft")).status, 409);
+  const refreshed = await (await request(chapterNotes, { cookie })).json();
+  assert.equal(refreshed.body, "Desktop note");
+  assert.equal((await save(chapterNotes, refreshed, "Fresh browser note")).status, 200);
+  const saved = await book.readBook(root);
+  assert.equal(saved.bookNotes, bookText);
+  assert.equal(saved.chapters[0].notes, "Fresh browser note");
+  assert.equal(saved.chapters[0].body, "");
+  const canonical = await fs.realpath(root);
+  assert.deepEqual(notices, [canonical, canonical]);
+  for (const endpoint of ["/api/notes/ai-context", "/api/notes/characters", "/api/notes/chapters/missing",
+    "/api/notes/chapters/" + encodeURIComponent("../notes/book.md")])
+    assert.equal((await request(endpoint, { cookie })).status, 404, endpoint);
+});
+
+test("shared notes cannot read linked folders or chapter context files", { skip: process.platform === "win32" }, async (t) => {
+  const { parent, root, id, request, pair } = await setup(t);
+  const cookie = await pair();
+  const initial = await (await request("/api/notes/book", { cookie })).json();
+  const outside = path.join(parent, "outside-notes");
+  await fs.rename(path.join(root, "notes"), outside);
+  await fs.writeFile(path.join(outside, "book.md"), "Private outside notes");
+  await fs.symlink(outside, path.join(root, "notes"));
+  const response = await request("/api/notes/book", { cookie });
+  assert.equal(response.status, 500);
+  assert.ok(!(await response.text()).includes("Private outside notes"));
+  assert.equal((await request("/api/notes/book", { cookie, method: "PUT", body: saveBody(initial, "Blocked") })).status, 500);
+  assert.equal(await fs.readFile(path.join(outside, "book.md"), "utf8"), "Private outside notes");
+
+  const manifest = await book.loadManifest(root);
+  manifest.chapters[0].notesFile = "chapter-01.context.md";
+  await fs.writeFile(path.join(root, "book.json"), JSON.stringify(manifest));
+  assert.equal((await request("/api/notes/chapters/" + id, { cookie })).status, 500);
 });
 
 test("the shared write queue rejects a desktop save racing a browser save", async (t) => {

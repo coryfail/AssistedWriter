@@ -7,7 +7,7 @@ const book = require("../electron/book.cjs");
 const { createRelay } = require("../relay/server.cjs");
 const { startRelayHost } = require("../electron/relay-host.cjs");
 
-test("an encrypted Internet share opens a chapter, saves with conflict protection, and stops on revocation", async (t) => {
+test("an encrypted Internet share edits chapters and notes with conflict protection and stops on revocation", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aw-relay-test-"));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const root = await book.createBook(dir, "Relay test book", "QA");
@@ -43,6 +43,7 @@ test("an encrypted Internet share opens a chapter, saves with conflict protectio
     assert.ok(!text.includes(secret));
     assert.ok(!text.includes("Relay test book"));
     assert.ok(!text.includes("An encrypted edit."));
+    assert.ok(!text.includes("An encrypted note."));
     return crypto.unseal(key, crypto.responseContext(room, envelope.nonce), JSON.parse(text));
   }
 
@@ -60,10 +61,24 @@ test("an encrypted Internet share opens a chapter, saves with conflict protectio
   assert.equal((await book.readBook(root)).chapters[0].body, "An encrypted edit.");
   assert.equal((await send(encrypted)).status, 401);
   assert.equal((await request(edit)).status, 409);
-  assert.equal((await request({ path: "/api/notes", method: "GET" })).status, 404);
+  assert.equal(library.body.notesAvailable, true);
+  for (const [notePath, original] of [["/api/notes/book", "# Book Notes\n\n"],
+    ["/api/notes" + chapter.slice("/api".length), "# Notes for Chapter 1\n\n"]]) {
+    const note = await request({ path: notePath, method: "GET" });
+    assert.equal(note.status, 200);
+    assert.equal(note.body.body, original);
+    const { revision, manifestRevision } = note.body;
+    const update = { path: notePath, method: "PUT", body: { revision, manifestRevision, body: "An encrypted note." } };
+    assert.equal((await request(update)).status, 200);
+    assert.equal((await request(update)).status, 409);
+  }
+  const onDisk = await book.readBook(root);
+  assert.equal(onDisk.bookNotes, "An encrypted note.");
+  assert.equal(onDisk.chapters[0].notes, "An encrypted note.");
+  assert.equal((await request({ path: "/api/notes/ai-context", method: "GET" })).status, 404);
 
   await host.stop();
-  const stopped = await send(await encrypt({ path: "/api/book", method: "GET" }));
+  const stopped = await send(await encrypt({ path: "/api/notes/book", method: "GET" }));
   assert.equal(stopped.status, 503);
 });
 

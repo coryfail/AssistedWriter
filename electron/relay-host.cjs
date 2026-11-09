@@ -2,11 +2,11 @@ const { randomBytes, createHash } = require("node:crypto");
 const fs = require("node:fs/promises");
 const WebSocket = require("ws");
 const book = require("./book.cjs");
+const { sharedBookRequest } = require("./shared-book-api.cjs");
 const { relayOrigin } = require("./relay-origin.cjs");
 
 const MAX_FRAME = 5 * 1024 * 1024;
 const WINDOW_MS = 120000;
-const validHash = /^[a-f0-9]{64}$/;
 
 async function startRelayHost({ root, relayUrl, allowLocal = false, onSave = () => {} }) {
   const origin = relayOrigin(relayUrl, { allowLocal });
@@ -31,36 +31,17 @@ async function startRelayHost({ root, relayUrl, allowLocal = false, onSave = () 
   async function dispatch(request, active) {
     if (!request || !["GET", "PUT"].includes(request.method) || typeof request.path !== "string")
       return { status: 400, body: { error: "Invalid request." } };
-    const match = request.path.match(/^\/api\/chapters\/([^/]+)$/);
-    let draft, chapterId;
-    if (match) {
-      try { chapterId = decodeURIComponent(match[1]); }
-      catch { return { status: 400, body: { error: "Invalid chapter." } }; }
-      if (!chapterId || chapterId.length > 256) return { status: 400, body: { error: "Invalid chapter." } };
-      if (request.method === "PUT") {
-        const { body, revision, manifestRevision } = request.body || {};
-        if (typeof body !== "string" || Buffer.byteLength(body) > 2 * 1024 * 1024 ||
-            typeof revision !== "string" || !validHash.test(revision) ||
-            typeof manifestRevision !== "string" || !validHash.test(manifestRevision))
-          return { status: 400, body: { error: "A chapter and its original revision are required." } };
-        draft = { body, revision, manifestRevision };
-      }
-    } else if (!(request.method === "GET" && request.path === "/api/book")) {
-      return { status: 404, body: { error: "Page not found." } };
-    }
     try {
-      const body = await book.withBookOperation(sharedRoot, (canonical) => {
-        if (closed || active !== socket || active.readyState !== WebSocket.OPEN)
-          throw Object.assign(new Error("Web Access is disconnected."), { code: "LINK_DISCONNECTED" });
-        if (canonical !== sharedRoot) throw new Error("The shared book moved.");
-        return match ? book.sharedChapter(canonical, chapterId, draft) : book.sharedBook(canonical);
-      });
-      if (draft) onSave(sharedRoot);
+      const body = await sharedBookRequest(request.path, request.method, () => request.body,
+        (operation) => book.withBookOperation(sharedRoot, (canonical) => {
+          if (closed || active !== socket || active.readyState !== WebSocket.OPEN)
+            throw new Error("Web Access is disconnected.");
+          if (canonical !== sharedRoot) throw new Error("The shared book moved.");
+          return operation(canonical);
+        }), () => onSave(sharedRoot));
       return { status: 200, body };
     } catch (error) {
-      if (error.code === "BOOK_CONFLICT") return { status: 409, body: { error: "The saved chapter changed. Your browser draft has not been overwritten." } };
-      if (error.code === "CHAPTER_MISSING") return { status: 404, body: { error: "This chapter is no longer in the book." } };
-      if (error.code === "CHAPTER_TOO_LARGE") return { status: 413, body: { error: error.message } };
+      if (error.status) return { status: error.status, body: { error: error.message } };
       return { status: 503, body: { error: "The desktop could not access this book. Check the desktop app." } };
     }
   }

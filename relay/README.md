@@ -32,4 +32,6 @@ curl --fail https://assisted-writer-relay.fly.dev/health
 
 New app builds default to the verified HTTPS origin at `https://assisted-writer-relay.fly.dev`. To use a different relay, override `ASSISTED_WRITER_RELAY_URL` in the build environment or the GitHub Actions repository variables. Create a private link with a disposable book to verify any new endpoint before distributing a build. The hosted origin is public configuration; there is no bundled relay password. Writers only use **Create private link** and a browser.
 
+Deploy the updated relay alongside a desktop release that adds browser features. The relay serves the browser UI for Internet links; the desktop serves it directly for home Wi-Fi. The notes controls appear only when the sharing desktop reports note support, so older builds can keep using the manuscript editor after the relay is updated.
+
 Turning off Web Access or leaving the shared book closes the outbound connection and invalidates the link. Brief outages reconnect with the same link while sharing stays enabled. A relay restart interrupts any save in progress; the existing draft recovery and revision checks protect the browser draft.
