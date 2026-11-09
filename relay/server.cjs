@@ -2,12 +2,15 @@ const http = require("node:http");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { createHash, randomUUID } = require("node:crypto");
+const { isIP } = require("node:net");
 const { WebSocketServer, WebSocket } = require("ws");
 const { relayOrigin } = require("../electron/relay-origin.cjs");
 
 const MAX_FRAME = 5 * 1024 * 1024;
 const MAX_HOSTS = 48;
-const MAX_PENDING = 36;
+const MAX_PENDING = 16;
+const MAX_HOSTS_PER_IP = 6;
+const DAILY_PAYLOAD_LIMIT = 1024 * 1024 * 1024;
 const TIMEOUT = 8500;
 const MIME = {
   ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -37,7 +40,8 @@ async function readEnvelope(req) {
   return { nonce: envelope.nonce, data: envelope.data };
 }
 
-async function createRelay({ dist, origin, host = "127.0.0.1", port = 48732 } = {}) {
+async function createRelay({ dist, origin, host = "127.0.0.1", port = 48732,
+  trustFlyProxy = false, dailyPayloadLimit = DAILY_PAYLOAD_LIMIT } = {}) {
   const configured = origin ? relayOrigin(origin, { allowLocal: host === "127.0.0.1" }) : null;
   if (!configured && host !== "127.0.0.1") throw new Error("RELAY_PUBLIC_ORIGIN must be set for a hosted relay.");
   const html = (await fs.readFile(path.join(dist, "web.html"), "utf8")).replace(/(["'])\.\/assets\//g, "$1/assets/");
@@ -47,11 +51,40 @@ async function createRelay({ dist, origin, host = "127.0.0.1", port = 48732 } = 
     if (item.isFile() && type) assets.set("/assets/" + item.name, { type, file: path.join(dist, "assets", item.name) });
   }
   const hosts = new Map();
+  const peers = new Map();
   const ws = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME, perMessageDeflate: false });
   let publicOrigin = configured;
   let pending = 0;
   let closing = false;
+  let trafficDay = -1;
+  let trafficBytes = 0;
   const authority = () => new URL(publicOrigin).host;
+
+  function peerOf(req) {
+    const forwarded = req.headers["fly-client-ip"];
+    return trustFlyProxy && typeof forwarded === "string" && isIP(forwarded)
+      ? forwarded : (req.socket.remoteAddress || "unknown");
+  }
+
+  function rateAllowed(peer, kind, limit) {
+    const minute = Math.floor(Date.now() / 60000);
+    let bucket = peers.get(peer);
+    if (!bucket || bucket.minute !== minute) {
+      if (!bucket && peers.size >= 4096) return false;
+      bucket = { minute, connections: 0, requests: 0 };
+      peers.set(peer, bucket);
+    }
+    return ++bucket[kind] <= limit;
+  }
+
+  function chargePayload(bytes) {
+    const day = Math.floor(Date.now() / 86400000);
+    if (trafficDay !== day) { trafficDay = day; trafficBytes = 0; }
+    if (trafficBytes + bytes > dailyPayloadLimit)
+      throw httpError(429, "The relay has reached its daily traffic limit. Your draft is still on this device.");
+    trafficBytes += bytes;
+    return trafficDay;
+  }
 
   function respond(res, status, value) {
     if (res.destroyed || res.writableEnded) return;
@@ -68,12 +101,14 @@ async function createRelay({ dist, origin, host = "127.0.0.1", port = 48732 } = 
     if (closing || req.headers.host !== authority()) throw httpError(403, "Use the address in the sharing link.");
     const url = req.url || "";
     if (["GET", "HEAD"].includes(req.method) && /^\/remote\/[a-f0-9]{64}$/.test(url)) {
+      if (req.method === "GET") chargePayload(Buffer.byteLength(html));
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       return res.end(req.method === "HEAD" ? undefined : html);
     }
     if (["GET", "HEAD"].includes(req.method) && assets.has(url)) {
       const asset = assets.get(url);
       const content = req.method === "HEAD" ? undefined : await fs.readFile(asset.file);
+      if (content) chargePayload(content.length);
       res.writeHead(200, { "Content-Type": asset.type, "Cache-Control": "public, max-age=31536000, immutable" });
       return res.end(content);
     }
@@ -82,6 +117,7 @@ async function createRelay({ dist, origin, host = "127.0.0.1", port = 48732 } = 
     if (req.headers.origin !== publicOrigin ||
         (req.headers["sec-fetch-site"] && req.headers["sec-fetch-site"] !== "same-origin"))
       throw httpError(403, "Open the link directly in this browser.");
+    if (!rateAllowed(peerOf(req), "requests", 180)) throw httpError(429, "Too many requests from this connection. Try again in a minute.");
     const channel = hosts.get(route[1]);
     if (!channel || channel.socket.readyState !== WebSocket.OPEN)
       throw httpError(503, "The desktop is offline or this link has expired.");
@@ -91,21 +127,27 @@ async function createRelay({ dist, origin, host = "127.0.0.1", port = 48732 } = 
     if (++channel.requests > 120) throw httpError(429, "Too many requests. Try again in a minute.");
     pending++;
     channel.active++;
-    let id, timer;
+    let id, timer, reservedDay, usedReply = 0;
     try {
       const envelope = await readEnvelope(req);
       if (channel.socket.readyState !== WebSocket.OPEN || res.destroyed)
         throw httpError(503, "The desktop is disconnected.");
       id = randomUUID();
+      const frame = JSON.stringify({ id, envelope });
+      // Reserve enough room for the response before forwarding a possible
+      // write, so hitting the cap cannot mask a successful save.
+      reservedDay = chargePayload(Buffer.byteLength(frame) + MAX_FRAME);
       const result = await new Promise((resolve, reject) => {
         timer = setTimeout(() => reject(httpError(504, "The desktop took too long to answer.")), TIMEOUT);
         channel.inflight.set(id, { resolve, reject });
-        channel.socket.send(JSON.stringify({ id, envelope }), (error) => {
+        channel.socket.send(frame, (error) => {
           if (error) reject(httpError(503, "The desktop is disconnected."));
         });
       });
+      usedReply = Buffer.byteLength(JSON.stringify(result));
       respond(res, 200, result);
     } finally {
+      if (reservedDay === trafficDay) trafficBytes -= MAX_FRAME - usedReply;
       clearTimeout(timer);
       if (id) channel.inflight.delete(id);
       pending--;
@@ -124,12 +166,17 @@ async function createRelay({ dist, origin, host = "127.0.0.1", port = 48732 } = 
       socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n"); return;
     }
     const room = createHash("sha256").update(token).digest("hex");
+    const peer = peerOf(req);
+    const peerHosts = [...hosts.entries()].filter(([id, channel]) => id !== room && channel.peer === peer).length;
+    if (!rateAllowed(peer, "connections", 20) || peerHosts >= MAX_HOSTS_PER_IP) {
+      socket.end("HTTP/1.1 429 Too Many Requests\r\nRetry-After: 60\r\nConnection: close\r\n\r\n"); return;
+    }
     if (!hosts.has(room) && hosts.size >= MAX_HOSTS) {
       socket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n"); return;
     }
     ws.handleUpgrade(req, socket, head, (client) => {
       hosts.get(room)?.socket.terminate();
-      const channel = { socket: client, inflight: new Map(), active: 0, minute: Date.now(), requests: 0, alive: true };
+      const channel = { peer, socket: client, inflight: new Map(), active: 0, minute: Date.now(), requests: 0, alive: true };
       hosts.set(room, channel);
       client.on("error", () => {});
       client.on("pong", () => { channel.alive = true; });
@@ -148,6 +195,8 @@ async function createRelay({ dist, origin, host = "127.0.0.1", port = 48732 } = 
     });
   });
   const heartbeat = setInterval(() => {
+    const minute = Math.floor(Date.now() / 60000);
+    for (const [peer, bucket] of peers) if (bucket.minute < minute) peers.delete(peer);
     for (const { socket, alive } of hosts.values()) if (!alive) socket.terminate();
     for (const channel of hosts.values()) if (channel.socket.readyState === WebSocket.OPEN) {
       channel.alive = false;
@@ -179,6 +228,7 @@ if (require.main === module) {
     origin: process.env.RELAY_PUBLIC_ORIGIN,
     host: process.env.RELAY_PUBLIC_ORIGIN ? "0.0.0.0" : "127.0.0.1",
     port: Number(process.env.PORT || 48732),
+    trustFlyProxy: Boolean(process.env.FLY_APP_NAME),
   }).then((relay) => {
     console.log("Assisted Writer relay ready.");
     for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => relay.stop());

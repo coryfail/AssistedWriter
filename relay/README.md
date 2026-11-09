@@ -23,6 +23,8 @@ Open a disposable book, create a private link from **Web Access**, and open it o
 
 The supplied Fly config runs a single continuously available Machine. Live connections are held in memory, so do not add replicas without introducing shared routing. Deployment requires an authorized Fly account and can incur [hosting charges](https://fly.io/docs/about/pricing/).
 
+The initial relay supports up to 48 connected desktops, with a lower per-IP limit and request and concurrency limits. It uses the Fly Proxy client IP only when running on Fly, and bounds delivered asset and encrypted payload traffic to 1 GiB per UTC day in memory. This is an abuse guardrail, not a guaranteed billing cap; it resets if the process restarts.
+
 ```sh
 fly apps create YOUR_RELAY_APP
 fly deploy --config fly.relay.toml --app YOUR_RELAY_APP --ha=false \
