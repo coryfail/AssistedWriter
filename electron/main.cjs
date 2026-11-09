@@ -17,7 +17,7 @@ const book = require("./book.cjs");
 const { review, generateCommitMessage } = require("./ai.cjs");
 const { exportBook } = require("./export.cjs");
 const git = require("./git.cjs");
-const { networkAddresses, startWebAccess } = require("./web-access.cjs");
+const { networkAddresses, startWebAccess, TAILSCALE_COMMAND } = require("./web-access.cjs");
 
 let mainWindow;
 let activeBookWatch = null;
@@ -233,7 +233,7 @@ app.on("window-all-closed", () => {
 app.on("before-quit", stopWebAccess);
 
 function webAccessStatus() {
-  return { ...(webAccess?.status() || { enabled: false }), addresses: networkAddresses() };
+  return { ...(webAccess?.status() || { enabled: false }), addresses: networkAddresses(), remoteCommand: TAILSCALE_COMMAND };
 }
 
 function stopWebAccess() {
@@ -244,14 +244,19 @@ function stopWebAccess() {
 }
 
 ipcMain.handle("web:status", webAccessStatus);
-ipcMain.handle("web:start", async (_event, host) => {
+ipcMain.handle("web:start", async (_event, options) => {
   if (webAccess || webStarting) throw new Error("Web Access is already on or starting.");
   const root = activeBookWatch?.root;
   if (!root) throw new Error("Open a book before enabling Web Access.");
-  if (!networkAddresses().some((item) => item.address === host))
+  const { mode, host, remoteUrl } = options || {};
+  if (mode !== "lan" && mode !== "remote") throw new Error("Choose a Web Access connection mode.");
+  if (mode === "lan" && !networkAddresses().some((item) => item.address === host))
     throw new Error("Choose an available home network address.");
+  if (mode === "remote" && typeof remoteUrl !== "string")
+    throw new Error("Enter the HTTPS address shown by Tailscale Serve.");
   const starting = startWebAccess({
     root, host, dist: path.join(__dirname, "..", "dist"),
+    ...(mode === "remote" ? { remoteUrl } : {}),
     onSave() { if (activeBookWatch) scheduleBookRefresh(activeBookWatch, ""); },
   });
   webStarting = starting;

@@ -3,7 +3,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 const invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args);
 contextBridge.exposeInMainWorld("writer", {
   webStatus: () => invoke("web:status"),
-  webStart: (host) => invoke("web:start", host),
+  webStart: (options) => invoke("web:start", options),
   webStop: () => invoke("web:stop"),
   webRenewCode: () => invoke("web:renew-code"),
   webDisconnect: () => invoke("web:disconnect"),

@@ -1111,7 +1111,7 @@ function App() {
     if (!modal) return null;
     return (
       <div className="modal-backdrop" onMouseDown={() => setModal(null)}>
-        <div className="modal" onMouseDown={(event) => event.stopPropagation()}>
+        <div className={modal === "web" ? "modal web-access-modal" : "modal"} onMouseDown={(event) => event.stopPropagation()}>
           <button className="icon modal-close" onClick={() => setModal(null)}>
             <X size={19} />
           </button>

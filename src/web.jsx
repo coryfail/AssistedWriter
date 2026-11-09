@@ -10,6 +10,8 @@ import "./web.css";
 async function request(path, method = "GET", body) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
+  const unreachable = "Can’t reach the desktop. Check that it’s awake and Web Access is on." +
+    (location.protocol === "https:" ? " Make sure this device is connected to Tailscale." : "");
   try {
     let response;
     try {
@@ -17,9 +19,11 @@ async function request(path, method = "GET", body) {
         method, signal: controller.signal, credentials: "same-origin",
         ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
       });
-    } catch { throw new Error("Can’t reach the desktop. Check that it’s awake and Web Access is on."); }
-    const data = await response.json();
-    if (!response.ok) throw Object.assign(new Error(data.error || "The request did not complete."), { status: response.status });
+    } catch { throw new Error(unreachable); }
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw Object.assign(new Error(data?.error || (response.status >= 500
+      ? unreachable : "The request did not complete.")), { status: response.status });
+    if (!data) throw new Error(unreachable);
     return data;
   } finally { clearTimeout(timeout); }
 }

@@ -63,9 +63,25 @@ The Characters and Locations views support any number of named entries. Each ent
 3. On a phone, tablet, or computer on the same network, open the exact address shown and enter the eight-digit pairing code. Codes expire after five minutes and work once. Use **New code** to pair another device.
 4. Select a chapter and write. The browser autosaves directly to the same Markdown file the desktop uses. **Save now** retries a pending save. To stop sharing, use **Turn off Web Access**, leave the shared book, or close the desktop window.
 
-The desktop must stay awake, with the book open and reachable. This first version serves one book at a time over unencrypted HTTP on the selected private IPv4 interface (port `48731`). Use it only on a trusted home network; don't forward that port from the internet. The browser can read and edit manuscript chapters. Book management, notes, AI, Git, exports, and account settings remain on the desktop. There is no separate cloud copy or GitHub sign-in.
+The desktop must stay awake, with the book open and reachable. **Home Wi-Fi** serves one book at a time over unencrypted HTTP on the selected private IPv4 interface (port `48731`). Use it only on a trusted home network; don't forward that port from the internet. The browser can read and edit manuscript chapters. Book management, notes, AI, Git, exports, and account settings remain on the desktop. There is no separate cloud copy or GitHub sign-in.
 
 If a chapter changed since a draft started, Assisted Writer keeps the draft and rejects the stale save. You can review the saved text in the browser and download the draft before deliberately opening the saved version. Unsent drafts are also kept in that browser’s local storage when available. Keep the tab open or download the draft if the browser can’t store a recovery copy. A paired session lasts up to 12 hours; **Disconnect all devices** revokes every paired session immediately.
+
+### Away from home
+
+1. Install and sign in to [Tailscale on the desktop](https://tailscale.com/docs/install/mac) and on your phone or tablet. Connect both to the same Tailscale network.
+2. On the desktop, run the following in Terminal. Keep it running and follow any prompt to enable HTTPS for [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve).
+
+   ```sh
+   tailscale serve --https=8443 http://127.0.0.1:48731
+   ```
+
+   If the standalone Mac app is installed but the command isn't on your PATH, use `/Applications/Tailscale.app/Contents/MacOS/Tailscale` in place of `tailscale`. Choose a different Serve HTTPS port if 8443 is already in use.
+
+3. In Assisted Writer, choose **Web Access → Away from home · Tailscale**, paste the full HTTPS address printed by Serve (including its port), then enable Web Access.
+4. Open that address on your other device and enter the desktop pairing code. This works over cellular or another Wi-Fi network while that device is connected to Tailscale.
+
+Remote mode listens only on the Mac's loopback interface. It requires the configured HTTPS host and a signed-in Tailscale device, keeps browser sessions tied to their Tailscale identity, and rejects public Funnel traffic. Use **Serve**, not **Funnel**. To stop the forwarding session too, press Ctrl+C in the Terminal window running Serve.
 
 ## Git for each book
 
