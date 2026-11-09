@@ -17,9 +17,12 @@ const book = require("./book.cjs");
 const { review, generateCommitMessage } = require("./ai.cjs");
 const { exportBook } = require("./export.cjs");
 const git = require("./git.cjs");
+const { networkAddresses, startWebAccess } = require("./web-access.cjs");
 
 let mainWindow;
 let activeBookWatch = null;
+let webAccess = null;
+let webStarting = null;
 app.setName("Assisted Writer");
 const recentFile = () => path.join(app.getPath("userData"), "recent.json");
 const keyFile = () => path.join(app.getPath("userData"), "api-key.enc");
@@ -165,7 +168,7 @@ function scheduleBookRefresh(state, changedPath) {
   state.timer = setTimeout(async () => {
     if (activeBookWatch !== state) return;
     try {
-      const data = await book.readBook(state.root);
+      const data = await book.withBookOperation(state.root, () => book.readBook(state.root));
       const next = revisionSnapshot(data);
       const paths = new Set([...Object.keys(state.snapshot), ...Object.keys(next)]);
       const changed = [...paths].filter((file) => state.snapshot[file] !== next[file]);
@@ -192,6 +195,7 @@ function watchBook(root, data) {
     activeBookWatch.snapshot = revisionSnapshot(data);
     return;
   }
+  if (activeBookWatch) stopWebAccess();
   closeBookWatch();
   const state = {
     root,
@@ -223,8 +227,51 @@ app.whenReady().then(() => {
 });
 app.on("window-all-closed", () => {
   closeBookWatch();
+  stopWebAccess();
   if (process.platform !== "darwin") app.quit();
 });
+app.on("before-quit", stopWebAccess);
+
+function webAccessStatus() {
+  return { ...(webAccess?.status() || { enabled: false }), addresses: networkAddresses() };
+}
+
+function stopWebAccess() {
+  const active = webAccess;
+  webAccess = null;
+  webStarting = null;
+  return active?.stop();
+}
+
+ipcMain.handle("web:status", webAccessStatus);
+ipcMain.handle("web:start", async (_event, host) => {
+  if (webAccess || webStarting) throw new Error("Web Access is already on or starting.");
+  const root = activeBookWatch?.root;
+  if (!root) throw new Error("Open a book before enabling Web Access.");
+  if (!networkAddresses().some((item) => item.address === host))
+    throw new Error("Choose an available home network address.");
+  const starting = startWebAccess({
+    root, host, dist: path.join(__dirname, "..", "dist"),
+    onSave() { if (activeBookWatch) scheduleBookRefresh(activeBookWatch, ""); },
+  });
+  webStarting = starting;
+  try {
+    const access = await starting;
+    if (webStarting !== starting) await access.stop();
+    else webAccess = access;
+    return webAccessStatus();
+  } finally {
+    if (webStarting === starting) webStarting = null;
+  }
+});
+ipcMain.handle("web:stop", async () => { await stopWebAccess(); return webAccessStatus(); });
+ipcMain.handle("web:renew-code", () => { webAccess?.renewCode(); return webAccessStatus(); });
+ipcMain.handle("web:disconnect", () => { webAccess?.disconnect(); return webAccessStatus(); });
+
+function handleBook(channel, handler) {
+  ipcMain.handle(channel, (event, root, ...args) =>
+    book.withBookOperation(root, () => handler(event, root, ...args)));
+}
 
 ipcMain.handle("book:recent", recent);
 ipcMain.handle("book:create", async (_event, title, author) => {
@@ -240,7 +287,7 @@ ipcMain.handle("book:create", async (_event, title, author) => {
     String(author || ""),
   );
   await remember(root);
-  const data = await book.readBook(root);
+  const data = await book.withBookOperation(root, () => book.readBook(root));
   watchBook(root, data);
   return data;
 });
@@ -251,40 +298,43 @@ ipcMain.handle("book:open", async () => {
   });
   if (result.canceled) return null;
   const root = result.filePaths[0];
+  const data = await book.withBookOperation(root, () => book.readBook(root));
+  await remember(root);
+  watchBook(root, data);
+  return data;
+});
+handleBook("book:load", async (_event, root) => {
   const data = await book.readBook(root);
   await remember(root);
   watchBook(root, data);
   return data;
 });
-ipcMain.handle("book:load", async (_event, root) => {
-  const data = await book.readBook(root);
-  await remember(root);
-  watchBook(root, data);
-  return data;
+ipcMain.handle("book:unwatch", async () => {
+  closeBookWatch();
+  await stopWebAccess();
 });
-ipcMain.handle("book:unwatch", () => closeBookWatch());
-ipcMain.handle("chapter:add", async (_event, root) => {
+handleBook("chapter:add", async (_event, root) => {
   const data = await book.addChapter(root);
   setBookWatchSnapshot(root, data);
   return data;
 });
-ipcMain.handle("chapter:save", async (_event, root, id, body, title, expectedRevision, expectedManifestRevision) => {
+handleBook("chapter:save", async (_event, root, id, body, title, expectedRevision, expectedManifestRevision) => {
   const saved = await book.saveChapter(root, id, body, title, expectedRevision, expectedManifestRevision);
   recordBookRevision(root, `chapters/${saved.file}`, saved.revisions.chapter);
   recordBookRevision(root, "book.json", saved.revisions.manifest);
   return saved;
 });
-ipcMain.handle("chapter:reorder", async (_event, root, id, direction) => {
+handleBook("chapter:reorder", async (_event, root, id, direction) => {
   const data = await book.reorderChapter(root, id, direction);
   setBookWatchSnapshot(root, data);
   return data;
 });
-ipcMain.handle("chapter:delete", async (_event, root, id) => {
+handleBook("chapter:delete", async (_event, root, id) => {
   const data = await book.deleteChapter(root, id);
   setBookWatchSnapshot(root, data);
   return data;
 });
-ipcMain.handle("notes:save", async (_event, root, id, content, expectedRevision) => {
+handleBook("notes:save", async (_event, root, id, content, expectedRevision) => {
   const hash = await book.saveNotes(root, id, content, expectedRevision);
   const manifest = await book.loadManifest(root);
   const chapter = manifest.chapters.find((item) => item.id === id);
@@ -292,12 +342,12 @@ ipcMain.handle("notes:save", async (_event, root, id, content, expectedRevision)
   recordBookRevision(root, file, hash);
   return hash;
 });
-ipcMain.handle("notes:append", async (_event, root, target, chapterId, note) => {
+handleBook("notes:append", async (_event, root, target, chapterId, note) => {
   const data = await book.appendNote(root, target, chapterId, note);
   setBookWatchSnapshot(root, data);
   return data;
 });
-ipcMain.handle("reference:save", async (_event, root, kind, chapterId, content, expectedRevision) => {
+handleBook("reference:save", async (_event, root, kind, chapterId, content, expectedRevision) => {
   const hash = await book.saveReference(root, kind, chapterId, content, expectedRevision);
   const manifest = await book.loadManifest(root);
   const chapter = manifest.chapters.find((item) => item.id === chapterId);
@@ -308,7 +358,7 @@ ipcMain.handle("reference:save", async (_event, root, kind, chapterId, content, 
   recordBookRevision(root, file, hash);
   return hash;
 });
-ipcMain.handle("book:metadata", async (_event, root, values, expectedRevision) => {
+handleBook("book:metadata", async (_event, root, values, expectedRevision) => {
   const data = await book.saveMetadata(root, values, expectedRevision);
   setBookWatchSnapshot(root, data);
   return data;
@@ -351,7 +401,7 @@ ipcMain.handle("ai:commit-message", async (_event, root, files) => {
   if (!key) throw new Error("Add your OpenAI API key in Settings first.");
   return generateCommitMessage(root, files, key);
 });
-ipcMain.handle(
+handleBook(
   "ai:approve",
   async (_event, root, chapterId, quote, replacement, hash) => {
     const result = await book.approveSuggestion(root, chapterId, quote, replacement, hash);
@@ -379,11 +429,11 @@ ipcMain.handle("git:diff", (_event, root, file) => git.diff(root, file));
 ipcMain.handle("git:commit", (_event, root, message, files) =>
   git.commit(root, message, files),
 );
-ipcMain.handle("git:switch", (_event, root, branch) =>
+handleBook("git:switch", (_event, root, branch) =>
   git.switchBranch(root, branch),
 );
-ipcMain.handle("git:create-branch", (_event, root, branch) =>
+handleBook("git:create-branch", (_event, root, branch) =>
   git.createBranch(root, branch),
 );
 ipcMain.handle("git:remote", (_event, root, url) => git.setRemote(root, url));
-ipcMain.handle("git:sync", (_event, root, action) => git.sync(root, action));
+handleBook("git:sync", (_event, root, action) => git.sync(root, action));

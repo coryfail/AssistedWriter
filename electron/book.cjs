@@ -1,6 +1,7 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const { constants } = require("node:fs");
 
 const slug = (value) =>
   String(value || "untitled")
@@ -24,7 +25,22 @@ const chapterContextPath = (root, chapter) =>
 const revision = (content) =>
   crypto.createHash("sha256").update(content).digest("hex");
 const externalChangeError = () =>
-  new Error("This file changed outside Assisted Writer. The latest version was loaded.");
+  Object.assign(new Error("This file changed outside Assisted Writer."), { code: "BOOK_CONFLICT" });
+const pendingOperations = new Map();
+
+// Electron and the web listener share this queue, including when a book was
+// opened through an alias. Disk revisions still protect against external edits.
+async function withBookOperation(root, operation) {
+  const key = await fs.realpath(root);
+  const previous = pendingOperations.get(key) || Promise.resolve();
+  const result = previous.then(() => operation(key));
+  const settled = result.catch(() => {});
+  pendingOperations.set(key, settled);
+  try { return await result; }
+  finally {
+    if (pendingOperations.get(key) === settled) pendingOperations.delete(key);
+  }
+}
 const readOptional = async (file) => {
   try { return await fs.readFile(file, "utf8"); }
   catch (error) { if (error.code === "ENOENT") return ""; throw error; }
@@ -73,11 +89,13 @@ async function migrateBookReferences(root, manifest) {
 const heading = (title, body) => `# ${title}\n\n${body.trim()}\n`;
 const withoutHeading = (content) =>
   content.replace(/^# [^\n]*\n(?:\n)?/, "").trim();
-async function atomicWrite(file, content, expectedRevision) {
+async function atomicWrite(file, content, expectedRevision, readCurrent) {
   const temporary = `${file}.${crypto.randomUUID()}.tmp`;
   try {
     await fs.writeFile(temporary, content);
-    await assertRevision(file, expectedRevision);
+    if (readCurrent) {
+      if (revision(await readCurrent()) !== expectedRevision) throw externalChangeError();
+    } else await assertRevision(file, expectedRevision);
     await fs.rename(temporary, file);
   } finally {
     await fs.rm(temporary, { force: true }).catch(() => {});
@@ -88,6 +106,10 @@ const writeJson = async (file, value, expectedRevision) =>
 
 async function readManifest(root) {
   const raw = await fs.readFile(manifestPath(root), "utf8");
+  return { data: parseManifest(raw), raw };
+}
+
+function parseManifest(raw) {
   const data = JSON.parse(raw);
   if (data.format !== "assisted-writer-1" || !Array.isArray(data.chapters))
     throw new Error("This is not a supported Assisted Writer book.");
@@ -105,7 +127,7 @@ async function readManifest(root) {
     )
       throw new Error("The book manifest contains an invalid chapter entry.");
   }
-  return { data, raw };
+  return data;
 }
 async function loadManifest(root) {
   return (await readManifest(root)).data;
@@ -270,17 +292,96 @@ async function saveChapter(root, id, body, title, expectedRevision, expectedMani
   if (expectedManifestRevision && revision(manifestRaw) !== expectedManifestRevision &&
     chapter.title !== nextTitle)
     throw externalChangeError();
+  const titleChanged = chapter.title !== nextTitle;
   chapter.title = nextTitle;
   const chapterContent = heading(chapter.title, body);
   await atomicWrite(chapterPath(root, chapter), chapterContent, expectedRevision);
-  await writeJson(manifestPath(root), manifest, revision(manifestRaw));
+  if (titleChanged) await writeJson(manifestPath(root), manifest, revision(manifestRaw));
   return {
     ...chapter,
     revisions: {
       chapter: revision(chapterContent),
-      manifest: revision(JSON.stringify(manifest, null, 2) + "\n"),
+      manifest: revision(titleChanged ? JSON.stringify(manifest, null, 2) + "\n" : manifestRaw),
     },
   };
+}
+
+const manuscriptLimit = 2 * 1024 * 1024;
+
+// Web access is read-only for the manifest, and cannot follow links or request
+// notes, arbitrary paths, or other desktop resources.
+async function readSharedFile(root, file) {
+  if (await fs.realpath(root) !== root || await fs.realpath(path.dirname(file)) !== path.dirname(file))
+    throw new Error("A shared book cannot use linked manuscript folders.");
+  const info = await fs.lstat(file);
+  if (!info.isFile() || info.nlink !== 1 || info.size > manuscriptLimit)
+    throw new Error("The shared book file is unavailable or too large.");
+  const handle = await fs.open(file, constants.O_RDONLY | (constants.O_NOFOLLOW || 0) | (constants.O_NONBLOCK || 0));
+  try {
+    const opened = await handle.stat();
+    if (!opened.isFile() || opened.nlink !== 1 || opened.size > manuscriptLimit)
+      throw new Error("The shared book file is unavailable or too large.");
+    const chunks = [];
+    let total = 0;
+    while (total <= manuscriptLimit) {
+      const buffer = Buffer.allocUnsafe(Math.min(65536, manuscriptLimit + 1 - total));
+      const { bytesRead } = await handle.read(buffer);
+      if (!bytesRead) return Buffer.concat(chunks, total).toString("utf8");
+      total += bytesRead;
+      chunks.push(buffer.subarray(0, bytesRead));
+    }
+    throw new Error("The shared book file is too large.");
+  } finally { await handle.close(); }
+}
+
+async function sharedManifest(root) {
+  const raw = await readSharedFile(root, manifestPath(root));
+  const data = parseManifest(raw);
+  const ids = new Set(), filenames = new Set();
+  for (const chapter of data.chapters) {
+    if (typeof chapter.id !== "string" || typeof chapter.title !== "string" ||
+        ids.has(chapter.id) || [chapter.file, chapter.notesFile].some((file) =>
+          /[\\/:\x00-\x1f]/.test(file) || filenames.has(file.toLowerCase())) ||
+        chapter.file.toLowerCase() === chapter.notesFile.toLowerCase())
+      throw new Error("The shared book has an invalid manuscript manifest.");
+    ids.add(chapter.id);
+    filenames.add(chapter.file.toLowerCase());
+    filenames.add(chapter.notesFile.toLowerCase());
+  }
+  if (data.chapters.some((chapter) => /\.(notes|context)\.md$/i.test(chapter.file)))
+    throw new Error("The shared book has an invalid manuscript filename.");
+  return { data, revision: revision(raw) };
+}
+
+async function sharedBook(root) {
+  const { data } = await sharedManifest(root);
+  return {
+    id: revision(root),
+    title: String(data.title || "Untitled book"),
+    author: String(data.author || ""),
+    chapters: data.chapters.map(({ id, title }) => ({ id, title })),
+  };
+}
+
+async function sharedChapter(root, id, draft) {
+  const manifest = await sharedManifest(root);
+  const chapter = manifest.data.chapters.find((item) => item.id === id);
+  if (!chapter) throw Object.assign(new Error("Chapter not found."), { code: "CHAPTER_MISSING" });
+  const file = chapterPath(root, chapter);
+  const readCurrent = () => readSharedFile(root, file);
+  let raw = await readCurrent();
+  if (draft) {
+    if (manifest.revision !== draft.manifestRevision || revision(raw) !== draft.revision)
+      throw externalChangeError();
+    raw = heading(chapter.title, draft.body);
+    if (Buffer.byteLength(raw) > manuscriptLimit)
+      throw Object.assign(new Error("This chapter is too large to save from the browser."), { code: "CHAPTER_TOO_LARGE" });
+    await atomicWrite(file, raw, draft.revision, async () => {
+      if ((await sharedManifest(root)).revision !== manifest.revision) throw externalChangeError();
+      return readCurrent();
+    });
+  }
+  return { id, title: chapter.title, body: withoutHeading(raw), revision: revision(raw), manifestRevision: manifest.revision };
 }
 
 async function saveNotes(root, id, content, expectedRevision) {
@@ -433,6 +534,9 @@ async function approveSuggestion(
 }
 
 module.exports = {
+  withBookOperation,
+  sharedBook,
+  sharedChapter,
   createBook,
   readBook,
   addChapter,

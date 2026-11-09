@@ -3,20 +3,13 @@ import { createRoot } from "react-dom/client";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
+import { FormattingToolbar, manuscriptExtensions } from "./manuscript-editor.jsx";
+import { WebAccessPanel } from "./web-access-panel.jsx";
+import { downloadDraft, readDraft, storeDraft, clearDraft } from "./drafts.mjs";
 import { MarkdownDisplay } from "./markdown-display.mjs";
 import { addTrackerEntry, deleteTrackerEntry, parseTracker,
   updateTrackerEntry, updateTrackerSegment } from "./tracker.mjs";
 import {
-  Bold,
-  Italic,
-  Strikethrough,
-  Heading2,
-  Heading3,
-  Quote,
-  List,
-  ListOrdered,
-  Undo2,
-  Redo2,
   Plus,
   BookOpen,
   NotebookPen,
@@ -37,13 +30,13 @@ import {
   Send,
   PanelRightClose,
   PanelRightOpen,
-  Asterisk,
   GitBranch,
   GitCommitHorizontal,
   RefreshCw,
   Upload,
   Download,
   Trash2,
+  Radio,
 } from "lucide-react";
 import "./style.css";
 
@@ -62,50 +55,6 @@ const noteDestinationLabels = {
   timeline: "Timeline",
   terminology: "Terminology",
 };
-
-function FormattingToolbar({ editor, hint }) {
-  return <div className="editor-toolbar">
-    <div className="tool-group">
-      <button title="Bold" aria-label="Bold" disabled={!editor}
-        className={editor?.isActive("bold") ? "selected" : ""}
-        onClick={() => editor.chain().focus().toggleBold().run()}><Bold size={17} /></button>
-      <button title="Italic" aria-label="Italic" disabled={!editor}
-        className={editor?.isActive("italic") ? "selected" : ""}
-        onClick={() => editor.chain().focus().toggleItalic().run()}><Italic size={17} /></button>
-      <button title="Strikethrough" aria-label="Strikethrough" disabled={!editor}
-        className={editor?.isActive("strike") ? "selected" : ""}
-        onClick={() => editor.chain().focus().toggleStrike().run()}><Strikethrough size={17} /></button>
-    </div>
-    <div className="tool-separator" />
-    <div className="tool-group">
-      <button title="Subheading" aria-label="Subheading" disabled={!editor}
-        className={editor?.isActive("heading", { level: 2 }) ? "selected" : ""}
-        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><Heading2 size={18} /></button>
-      <button title="Scene break" aria-label="Scene break" disabled={!editor}
-        onClick={() => editor.chain().focus().setHorizontalRule().run()}><Asterisk size={17} /></button>
-      <button title="Smaller subheading" aria-label="Smaller subheading" disabled={!editor}
-        className={editor?.isActive("heading", { level: 3 }) ? "selected" : ""}
-        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}><Heading3 size={17} /></button>
-      <button title="Block quote" aria-label="Block quote" disabled={!editor}
-        className={editor?.isActive("blockquote") ? "selected" : ""}
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}><Quote size={17} /></button>
-      <button title="Bulleted list" aria-label="Bulleted list" disabled={!editor}
-        className={editor?.isActive("bulletList") ? "selected" : ""}
-        onClick={() => editor.chain().focus().toggleBulletList().run()}><List size={17} /></button>
-      <button title="Numbered list" aria-label="Numbered list" disabled={!editor}
-        className={editor?.isActive("orderedList") ? "selected" : ""}
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}><ListOrdered size={17} /></button>
-    </div>
-    <div className="tool-separator" />
-    <div className="tool-group">
-      <button title="Undo" aria-label="Undo" disabled={!editor}
-        onClick={() => editor.chain().focus().undo().run()}><Undo2 size={17} /></button>
-      <button title="Redo" aria-label="Redo" disabled={!editor}
-        onClick={() => editor.chain().focus().redo().run()}><Redo2 size={17} /></button>
-    </div>
-    {hint && <span className="toolbar-hint">{hint}</span>}
-  </div>;
-}
 
 function MarkdownEditor({ value, onChange, children }) {
   const onChangeRef = useRef(onChange);
@@ -251,6 +200,10 @@ function App() {
   const bookRef = useRef(null);
   const reconcileRef = useRef(null);
   const timer = useRef(null);
+  const manuscriptDraft = useRef(null);
+  const manuscriptWriting = useRef(null);
+  const manuscriptConflict = useRef(false);
+  const [draftConflict, setDraftConflict] = useState(false);
   const notesTimer = useRef(null);
   const brainstormLastMessageRef = useRef(null);
   const reviewResultRef = useRef(null);
@@ -262,50 +215,10 @@ function App() {
     if (resultRevision) reviewResultRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, [resultRevision]);
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({ heading: { levels: [2, 3] } }),
-      Markdown,
-    ],
+    extensions: manuscriptExtensions(),
     content: "",
     editorProps: { attributes: { spellcheck: "true", "aria-label": "Manuscript" } },
-    onUpdate: ({ editor }) => {
-      setSaveState("Saving…");
-      clearTimeout(timer.current);
-      const root = rootRef.current,
-        id = selectedRef.current,
-        body = editor.getMarkdown(),
-        currentTitle = titleRef.current;
-      if (id)
-        setBook((prev) =>
-          prev
-            ? {
-                ...prev,
-                chapters: prev.chapters.map((c) =>
-                  c.id === id ? { ...c, body } : c,
-                ),
-              }
-            : prev,
-        );
-      if (root && id)
-        timer.current = setTimeout(async () => {
-          try {
-            const state = bookRef.current;
-            const saved = await api.saveChapter(root, id, body, currentTitle,
-              state?.revisions?.chapters?.[id], state?.revisions?.manifest);
-            recordChapterRevision(id, saved, body);
-            if (selectedRef.current === id && editor?.getMarkdown() === body &&
-              titleRef.current === currentTitle) setSaveState("Saved");
-          } catch (error) {
-            if (isExternalChange(error)) {
-              try { reconcileRef.current(await api.loadBook(root)); }
-              catch (reloadError) { announce(reloadError.message); }
-              return;
-            }
-            setSaveState("Save failed");
-            announce(error.message);
-          }
-        }, 650);
-    },
+    onUpdate: ({ editor }) => editManuscript(editor.getMarkdown(), titleRef.current),
   });
 
   useEffect(() => {
@@ -440,7 +353,102 @@ function App() {
       },
     };
     bookRef.current = updated;
-    setBook((value) => value ? { ...value, revisions: updated.revisions } : value);
+    setBook((value) => value ? { ...value, revisions: updated.revisions,
+      chapters: value.chapters.map((chapter) => chapter.id === id ? {
+        ...chapter, title: saved.title || chapter.title,
+        ...(body === undefined ? {} : { body }),
+      } : chapter),
+    } : value);
+  }
+
+  function markDraftConflict(value) {
+    manuscriptConflict.current = value;
+    setDraftConflict(value);
+    if (value) {
+      clearTimeout(timer.current);
+      setSaveState("Draft conflict");
+    }
+  }
+
+  function editManuscript(body, title) {
+    const root = rootRef.current, id = selectedRef.current, state = bookRef.current;
+    if (!root || !id || !state) return;
+    const draft = {
+      revision: state.revisions.chapters[id], manifestRevision: state.revisions.manifest,
+      ...manuscriptDraft.current, body, title, root, id,
+    };
+    manuscriptDraft.current = draft;
+    if (!storeDraft("desktop", root, id, draft))
+      announce("Draft recovery storage is unavailable. Save or download your draft before closing.");
+    setBook((previous) => previous ? { ...previous,
+      chapters: previous.chapters.map((chapter) => chapter.id === id ? { ...chapter, body } : chapter),
+    } : previous);
+    clearTimeout(timer.current);
+    if (manuscriptConflict.current) return;
+    setSaveState("Saving…");
+    timer.current = setTimeout(() => saveManuscript().catch((error) => announce(error.message)), 650);
+  }
+
+  async function saveManuscript() {
+    while (manuscriptWriting.current) await manuscriptWriting.current;
+    const draft = manuscriptDraft.current;
+    if (!draft) return;
+    if (manuscriptConflict.current)
+      throw new Error("Resolve the chapter conflict before continuing.");
+    const operation = (async () => {
+      try {
+        const saved = await api.saveChapter(draft.root, draft.id, draft.body, draft.title,
+          draft.revision, draft.manifestRevision);
+        const latest = manuscriptDraft.current;
+        const same = latest === draft;
+        recordChapterRevision(draft.id, saved, same ? draft.body : undefined);
+        if (same) {
+          clearDraft("desktop", draft.root, draft.id);
+          manuscriptDraft.current = null;
+          if (!manuscriptConflict.current) setSaveState("Saved");
+        } else if (latest && latest.root === draft.root && latest.id === draft.id) {
+          manuscriptDraft.current = { ...latest, revision: saved.revisions.chapter, manifestRevision: saved.revisions.manifest };
+          storeDraft("desktop", draft.root, draft.id, manuscriptDraft.current);
+        }
+      } catch (error) {
+        if (isExternalChange(error)) markDraftConflict(true);
+        else setSaveState("Save failed");
+        throw error;
+      }
+    })();
+    manuscriptWriting.current = operation;
+    try { await operation; }
+    finally { if (manuscriptWriting.current === operation) manuscriptWriting.current = null; }
+  }
+
+  function restoreManuscript(data, chapter) {
+    if (!chapter) return;
+    const saved = readDraft("desktop", data.root, chapter.id);
+    if (!saved) return;
+    if (saved.body.trim() === chapter.body && saved.title.trim() === chapter.title) {
+      clearDraft("desktop", data.root, chapter.id);
+      return;
+    }
+    manuscriptDraft.current = { ...saved, root: data.root, id: chapter.id };
+    titleRef.current = saved.title;
+    setTitle(saved.title);
+    editor?.commands.setContent(saved.body, { contentType: "markdown", emitUpdate: false });
+    if (saved.revision !== data.revisions.chapters[chapter.id] || saved.manifestRevision !== data.revisions.manifest)
+      markDraftConflict(true);
+    else setSaveState("Draft recovered");
+  }
+
+  async function useSavedManuscript() {
+    if (!window.confirm("Discard this desktop draft and open the saved chapter? Download it first to keep a copy.")) return;
+    try {
+      const data = await api.loadBook(rootRef.current);
+      const id = selectedRef.current;
+      const chapter = data.chapters.find((item) => item.id === id) || data.chapters[0];
+      clearDraft("desktop", data.root, id);
+      manuscriptDraft.current = null;
+      markDraftConflict(false);
+      showBook(data, chapter?.id);
+    } catch (error) { announce(error.message); }
   }
 
   function recordNotesRevision(id, hash, content) {
@@ -496,9 +504,16 @@ function App() {
     const id = selectedRef.current;
     const oldChapter = previous.chapters.find((chapter) => chapter.id === id);
     const newChapter = incoming.chapters.find((chapter) => chapter.id === id);
+    const draft = manuscriptDraft.current;
+    const editingDraft = draft && draft.id === id && draft.root === incoming.root;
+    if (editingDraft && (!newChapter || draft.revision !== incoming.revisions.chapters[id] ||
+        newChapter.title !== oldChapter?.title)) {
+      markDraftConflict(true);
+      return;
+    }
     const chapterChanged = Boolean(oldChapter && newChapter && (
       previous.revisions?.chapters?.[id] !== incoming.revisions?.chapters?.[id] ||
-      oldChapter.body !== newChapter.body
+      (!editingDraft && oldChapter.body !== newChapter.body)
     ));
     const notesChanged = Boolean(oldChapter && newChapter && (
       previous.revisions?.notes?.[id] !== incoming.revisions?.notes?.[id] ||
@@ -552,7 +567,7 @@ function App() {
         });
       } else if (section === "write" && titleChanged && newChapter) {
         clearTimeout(timer.current);
-        changeTitle(newChapter.title);
+        setTitle(newChapter.title);
       }
       if (section === "notes" && notesChanged && newChapter) {
         clearTimeout(notesTimer.current);
@@ -581,18 +596,7 @@ function App() {
     clearTimeout(timer.current);
     clearTimeout(notesTimer.current);
     if (!book || !selectedRef.current) return;
-    if (section === "write" && editor) {
-      const state = bookRef.current;
-      const saved = await api.saveChapter(
-        rootRef.current,
-        selectedRef.current,
-        editor.getMarkdown(),
-        titleRef.current,
-        state?.revisions?.chapters?.[selectedRef.current],
-        state?.revisions?.manifest,
-      );
-      recordChapterRevision(selectedRef.current, saved, editor.getMarkdown());
-    }
+    while (manuscriptDraft.current || manuscriptWriting.current) await saveManuscript();
     if (section === "notes" || section === "book-notes") {
       const id = section === "book-notes" ? "book" : selectedRef.current;
       const hash = await api.saveNotes(rootRef.current, id, notes,
@@ -616,17 +620,18 @@ function App() {
     setSaveState("Saved");
   }
 
-  function showBook(data) {
+  function showBook(data, initialId) {
     if (!data) return;
+    const first = data.chapters.find((chapter) => chapter.id === initialId) || data.chapters[0];
     setBook(data);
     bookRef.current = data;
     rootRef.current = data.root;
-    setSelectedId(data.chapters[0]?.id || null);
-    selectedRef.current = data.chapters[0]?.id || null;
-    titleRef.current = data.chapters[0]?.title || "";
+    setSelectedId(first?.id || null);
+    selectedRef.current = first?.id || null;
+    titleRef.current = first?.title || "";
     setTitle(titleRef.current);
-    setNotes(data.chapters[0]?.notes || "");
-    editor?.commands.setContent(data.chapters[0]?.body || "", {
+    setNotes(first?.notes || "");
+    editor?.commands.setContent(first?.body || "", {
       contentType: "markdown",
       emitUpdate: false,
     });
@@ -637,6 +642,7 @@ function App() {
     setGitDiff(null);
     setSection("write");
     setSaveState("Saved");
+    restoreManuscript(data, first);
     api
       .recent()
       .then(setRecent)
@@ -662,6 +668,7 @@ function App() {
         contentType: "markdown",
         emitUpdate: false,
       });
+      if (nextSection === "write") restoreManuscript(latest, chapter);
     } catch (error) {
       announce(error.message);
     }
@@ -729,34 +736,7 @@ function App() {
   function changeTitle(value) {
     setTitle(value);
     titleRef.current = value;
-    setSaveState("Saving…");
-    clearTimeout(timer.current);
-    const root = rootRef.current,
-      id = selectedRef.current,
-      body = editor?.getMarkdown() || "";
-    timer.current = setTimeout(async () => {
-      try {
-        const state = bookRef.current;
-        const chapter = await api.saveChapter(root, id, body, value,
-          state?.revisions?.chapters?.[id], state?.revisions?.manifest);
-        recordChapterRevision(id, chapter, body);
-        setBook((prev) => ({
-          ...prev,
-          chapters: prev.chapters.map((c) =>
-            c.id === id ? { ...c, title: chapter.title, body } : c,
-          ),
-        }));
-        setSaveState("Saved");
-      } catch (error) {
-        if (isExternalChange(error)) {
-          try { reconcileRef.current(await api.loadBook(root)); }
-          catch (reloadError) { announce(reloadError.message); }
-          return;
-        }
-        setSaveState("Save failed");
-        announce(error.message);
-      }
-    }, 650);
+    editManuscript(editor?.getMarkdown() || "", value);
   }
 
   function changeNotes(value) {
@@ -793,6 +773,7 @@ function App() {
 
   async function createBook() {
     try {
+      await flush();
       const data = await api.createBook(newTitle, newAuthor);
       showBook(data);
       if (data) setModal(null);
@@ -825,6 +806,7 @@ function App() {
 
   async function openBook(path) {
     try {
+      await flush();
       showBook(path ? await api.loadBook(path) : await api.openBook());
     } catch (error) {
       announce(error.message);
@@ -1133,7 +1115,7 @@ function App() {
           <button className="icon modal-close" onClick={() => setModal(null)}>
             <X size={19} />
           </button>
-          {modal === "new" ? (
+          {modal === "web" ? <WebAccessPanel api={api} bookTitle={book?.manifest.title} beforeStart={flush} /> : modal === "new" ? (
             <>
               <div className="eyebrow">BEGIN A BOOK</div>
               <h2>Give your story a home.</h2>
@@ -1284,13 +1266,15 @@ function App() {
           <button
             className="book-switch"
             onClick={async () => {
-              await flush();
-              await api.closeBook();
-              setBook(null);
-              bookRef.current = null;
-              rootRef.current = null;
-              selectedRef.current = null;
-              api.recent().then(setRecent);
+              try {
+                await flush();
+                await api.closeBook();
+                setBook(null);
+                bookRef.current = null;
+                rootRef.current = null;
+                selectedRef.current = null;
+                api.recent().then(setRecent);
+              } catch (error) { announce(error.message); }
             }}
           >
             <ArrowLeft size={16} />
@@ -1384,6 +1368,7 @@ function App() {
           ))}
         </div>
         <div className="library-bottom">
+          <button onClick={() => setModal("web")}><Radio size={17} /> Web Access</button>
           <button onClick={() => setModal("settings")}>
             <Settings2 size={17} /> Settings
           </button>
@@ -1455,72 +1440,12 @@ function App() {
         </header>
         {section === "write" ? (
           <>
-            <div className="editor-toolbar">
-              <div className="tool-group">
-                <button
-                  title="Bold"
-                  className={editor?.isActive("bold") ? "selected" : ""}
-                  onClick={() => editor.chain().focus().toggleBold().run()}
-                >
-                  <Bold size={17} />
-                </button>
-                <button
-                  title="Italic"
-                  className={editor?.isActive("italic") ? "selected" : ""}
-                  onClick={() => editor.chain().focus().toggleItalic().run()}
-                >
-                  <Italic size={17} />
-                </button>
-                <button title="Strikethrough" aria-label="Strikethrough" className={editor?.isActive("strike") ? "selected" : ""}
-                  onClick={() => editor.chain().focus().toggleStrike().run()}><Strikethrough size={17} /></button>
-              </div>
-              <div className="tool-separator" />
-              <div className="tool-group">
-                <button
-                  title="Subheading"
-                  className={
-                    editor?.isActive("heading", { level: 2 }) ? "selected" : ""
-                  }
-                  onClick={() =>
-                    editor.chain().focus().toggleHeading({ level: 2 }).run()
-                  }
-                >
-                  <Heading2 size={18} />
-                </button>
-                <button
-                  title="Scene break"
-                  onClick={() =>
-                    editor.chain().focus().setHorizontalRule().run()
-                  }
-                >
-                  <Asterisk size={17} />
-                </button>
-                <button title="Smaller subheading" aria-label="Smaller subheading" className={editor?.isActive("heading", { level: 3 }) ? "selected" : ""}
-                  onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}><Heading3 size={17} /></button>
-                <button title="Block quote" aria-label="Block quote" className={editor?.isActive("blockquote") ? "selected" : ""}
-                  onClick={() => editor.chain().focus().toggleBlockquote().run()}><Quote size={17} /></button>
-                <button title="Bulleted list" aria-label="Bulleted list" className={editor?.isActive("bulletList") ? "selected" : ""}
-                  onClick={() => editor.chain().focus().toggleBulletList().run()}><List size={17} /></button>
-                <button title="Numbered list" aria-label="Numbered list" className={editor?.isActive("orderedList") ? "selected" : ""}
-                  onClick={() => editor.chain().focus().toggleOrderedList().run()}><ListOrdered size={17} /></button>
-              </div>
-              <div className="tool-separator" />
-              <div className="tool-group">
-                <button
-                  title="Undo"
-                  onClick={() => editor.chain().focus().undo().run()}
-                >
-                  <Undo2 size={17} />
-                </button>
-                <button
-                  title="Redo"
-                  onClick={() => editor.chain().focus().redo().run()}
-                >
-                  <Redo2 size={17} />
-                </button>
-              </div>
-              <span className="toolbar-hint">A SPACE FOR YOUR WORDS</span>
-            </div>
+            <FormattingToolbar editor={editor} hint="A SPACE FOR YOUR WORDS" />
+            {draftConflict && <section className="manuscript-conflict" role="alert">
+              <div><strong>Another edit reached the book first.</strong><p>Your desktop draft is still here. Download it before opening the saved chapter.</p></div>
+              <button className="secondary" onClick={() => downloadDraft(title, editor?.getMarkdown() || "")}>Download draft</button>
+              <button className="secondary" onClick={useSavedManuscript}>Open saved chapter</button>
+            </section>}
             <div className="writing-scroll">
               <div className="page">
                 <div className="page-kicker">

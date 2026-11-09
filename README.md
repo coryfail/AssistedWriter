@@ -56,6 +56,17 @@ When an older book is opened, Assisted Writer creates any missing AI context and
 
 The Characters and Locations views support any number of named entries. Each entry has a name and a visually formatted Markdown description. Entries remain in their existing tracker Markdown files as clearly marked sections with stable IDs. Older freeform tracker text stays available under **Other notes** so it can be consulted or edited without a forced conversion. The book's `AGENTS.md` explains the entry format to Codex and other agents; existing books receive this guidance when opened.
 
+## Web Access
+
+1. Open the book on the desktop and select **Web Access** in the library sidebar.
+2. On a trusted home network, select the desktop’s network address and choose **Enable Web Access**. If macOS asks whether the app can accept incoming connections, allow it to enable this feature.
+3. On a phone, tablet, or computer on the same network, open the exact address shown and enter the eight-digit pairing code. Codes expire after five minutes and work once. Use **New code** to pair another device.
+4. Select a chapter and write. The browser autosaves directly to the same Markdown file the desktop uses. **Save now** retries a pending save. To stop sharing, use **Turn off Web Access**, leave the shared book, or close the desktop window.
+
+The desktop must stay awake, with the book open and reachable. This first version serves one book at a time over unencrypted HTTP on the selected private IPv4 interface (port `48731`). Use it only on a trusted home network; don't forward that port from the internet. The browser can read and edit manuscript chapters. Book management, notes, AI, Git, exports, and account settings remain on the desktop. There is no separate cloud copy or GitHub sign-in.
+
+If a chapter changed since a draft started, Assisted Writer keeps the draft and rejects the stale save. You can review the saved text in the browser and download the draft before deliberately opening the saved version. Unsent drafts are also kept in that browser’s local storage when available. Keep the tab open or download the draft if the browser can’t store a recovery copy. A paired session lasts up to 12 hours; **Disconnect all devices** revokes every paired session immediately.
+
 ## Git for each book
 
 Open the **Git** tab in the side panel to set up a repository in the current book folder, inspect changed files and diffs, commit selected files, create or switch local branches, and fetch, pull, or push. Existing book repositories also work. New repositories ignore `exports/` and `.DS_Store` by default. Add an `origin` remote in the panel to sync; Git uses the credentials configured on your Mac. Git identity (`user.name` and `user.email`) must be configured to commit. **Generate commit message with AI** drafts an editable message from the selected file changes using your saved API key; it never creates the commit automatically.

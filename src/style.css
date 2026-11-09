@@ -1656,3 +1656,37 @@ body {
     display: none;
   }
 }
+
+.web-access-code {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  margin: 18px 0;
+  padding: 14px 16px;
+  border: 1px solid #ded0bf;
+  background: #f3ebe0;
+}
+.web-access-code output {
+  font-size: 26px;
+  letter-spacing: .17em;
+  font-variant-numeric: tabular-nums;
+  color: #4b2727;
+  user-select: all;
+}
+.web-access-code span, .web-access-notice { color: #6a5545; }
+.web-access-notice { border-left: 3px solid #aa7958; padding-left: 12px; }
+.web-access-error { color: #8b3027 !important; }
+.web-access-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.modal label select { margin-top: 5px; padding: 8px; border: 1px solid #cbbcae; background: #fffdfa; color: #292723; }
+.manuscript-conflict {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 16px;
+  background: #f6e7d9;
+  border-bottom: 1px solid #e3c8b5;
+  color: #593b2f;
+  font-size: 13px;
+}
+.manuscript-conflict > div { flex: 1; }
+.manuscript-conflict p { margin: 4px 0 0; }

@@ -1,0 +1,82 @@
+:root {
+  color-scheme: light;
+  --web-ink: #2d2623;
+  --web-muted: #6a554a;
+  --web-rule: #d7c8b7;
+  --web-paper: #fffaf1;
+  --web-accent: #723d32;
+  color: var(--web-ink);
+  background: #f3ede3;
+}
+.web-wordmark { display: flex; align-items: center; gap: 13px; font-weight: 700; color: var(--web-ink); white-space: nowrap; }
+.web-kicker, .web-folio { display: inline-flex; align-items: center; gap: 7px; font-size: .71rem; letter-spacing: .15em; font-weight: 700; color: var(--web-accent); }
+.web-landing, .web-workspace { max-width: 1180px; margin: 0 auto; padding: 0 clamp(18px, 4vw, 60px); }
+.web-landing > header, .web-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 19px 0; border-bottom: 1px solid var(--web-rule); }
+.web-landing-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: clamp(22px, 6vw, 90px); align-items: start; padding: clamp(40px, 10vw, 125px) 0; }
+.web-intro h1, .web-paper h1, .web-library h2, .web-pair h2, .web-pair-overlay h2 {
+  font-family: "Libre Baskerville", Georgia, serif;
+  line-height: 1.24;
+  color: var(--web-ink);
+  letter-spacing: -.035em;
+}
+.web-intro h1 { font-size: clamp(2.1rem, 5.7vw, 4.25rem); margin: 20px 0 22px; }
+.web-intro h1 span { color: var(--web-accent); }
+.web-intro p, .web-pair p, .web-library p, .web-empty, .web-pair-form p { color: var(--web-muted); line-height: 1.55; }
+.web-intro p { max-width: 32ch; font-size: 1.07rem; }
+.web-pair { border: 1px solid var(--web-rule); border-top: 3px solid var(--web-accent); padding: clamp(18px, 3.3vw, 35px); background: var(--web-paper); }
+.web-pair h2 { font-size: 1.35rem; margin: 17px 0 21px; }
+.web-pair-form { display: grid; gap: 9px; }
+.web-pair-form label { font-weight: 700; }
+.web-pair-form p { margin: 0 0 6px; }
+.web-pair-form input, .web-select select, .web-source { background: var(--web-paper); border: 1px solid var(--web-rule); color: var(--web-ink); min-height: 44px; border-radius: 2px; }
+.web-pair-form input { width: 100%; padding: 10px 12px; font-size: 1.25rem; letter-spacing: .16em; font-variant-numeric: tabular-nums; }
+.web-primary, .web-quiet { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 2px; font-weight: 700; }
+.web-primary { margin-top: 4px; padding: 9px 13px; background: var(--web-accent); color: #fffaf1; border: 1px solid var(--web-accent); }
+.web-quiet { color: var(--web-accent); background: transparent; border: 0; padding: 6px 9px; }
+.web-quiet:hover:not(:disabled) { background: #eadfd0; }
+.web-error { color: #8c2c24 !important; line-height: 1.5; }
+.web-landing > footer { border-top: 1px solid var(--web-rule); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 16px 0; color: var(--web-muted); font-size: .79rem; }
+.web-workspace-grid { display: grid; grid-template-columns: minmax(170px, 235px) minmax(0, 1fr); gap: 23px; padding-top: 25px; }
+.web-library { padding: 14px 0; }
+.web-library h2 { font-size: 1.4rem; overflow-wrap: anywhere; margin: 13px 0 8px; }
+.web-library p { margin: 0 0 16px; }
+.web-chapters { display: grid; gap: 7px; margin: 17px 0 4px; font-weight: 700; }
+.web-chapters > span:first-child { display: flex; align-items: center; gap: 7px; }
+.web-select { display: flex; position: relative; align-items: center; }
+.web-select > svg { position: absolute; right: 10px; pointer-events: none; }
+.web-select select { width: 100%; appearance: none; padding: 8px 34px 8px 10px; font-size: 1rem; }
+.web-writing { min-width: 0; padding-bottom: 30px; }
+.web-write-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--web-rule); background: #eee4d6; }
+.web-write-tools .editor-toolbar { padding: 3px 8px; min-height: 45px; flex: 1 1 150px; min-width: 0; flex-wrap: nowrap; gap: 4px; border: 0; background: transparent; overflow-x: auto; }
+.web-write-tools .tool-group { flex: none; }
+.web-source-switch { flex: none; margin-left: auto; font-size: .8rem; }
+.web-paper { min-height: 65vh; padding: clamp(20px, 5vw, 58px); background: var(--web-paper); border: 1px solid var(--web-rule); border-top: 0; }
+.web-paper-meta { display: flex; align-items: center; justify-content: space-between; color: var(--web-accent); font-size: .73rem; letter-spacing: .16em; font-weight: 700; }
+.web-paper h1 { font-size: clamp(1.55rem, 4vw, 2.8rem); margin: 15px 0 0; overflow-wrap: anywhere; }
+.web-save-bar, .web-paper-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--web-muted); font-size: .85rem; }
+.web-save-bar { border-bottom: 1px solid var(--web-rule); margin-bottom: 18px; }
+.web-paper-footer { border-top: 1px solid var(--web-rule); margin-top: 17px; padding-top: 10px; }
+.web-paper .web-prose, .web-prose .tiptap { color: var(--web-ink); overflow-wrap: anywhere; }
+.web-paper .web-prose { font-size: 1rem; min-height: 40vh; }
+.web-paper .web-prose .tiptap { min-height: 40vh; }
+.web-source { width: 100%; min-height: 42vh; padding: 12px; resize: vertical; font: 1rem/1.65 ui-monospace, monospace; }
+.web-subtle { font-size: .84rem; color: var(--web-muted); }
+.web-conflict { border-left: 3px solid var(--web-accent); padding: 12px 14px; margin-bottom: 17px; background: #f3e4d3; }
+.web-conflict p { margin: 5px 0; color: var(--web-muted); line-height: 1.48; }
+.web-conflict pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 38vh; overflow-y: auto; background: var(--web-paper); padding: 10px; }
+.web-conflict-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.web-reconnect { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; padding: 7px 18px; background: #f3e4d3; }
+.web-pair-overlay { position: fixed; inset: 0; display: grid; place-items: center; z-index: 5; padding: 18px; background: #2d262388; }
+.web-pair-overlay > div { background: var(--web-paper); max-width: 440px; padding: 22px; border-top: 3px solid var(--web-accent); }
+.web-pair-overlay h2 { margin-top: 0; }
+@media (max-width: 700px) {
+  .web-landing-grid, .web-workspace-grid { grid-template-columns: minmax(0, 1fr); }
+  .web-landing-grid { padding: 35px 0; gap: 27px; }
+  .web-workspace-grid { gap: 9px; padding-top: 10px; }
+  .web-library { padding: 7px 0; }
+  .web-library h2 { margin: 7px 0; }
+  .web-chapters { margin-top: 10px; }
+  .web-paper { padding: 18px; }
+  .web-header { padding: 9px 0; }
+  .web-write-tools .tool-group button { width: 39px; height: 40px; }
+}
