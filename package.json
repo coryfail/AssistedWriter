@@ -1,6 +1,6 @@
 {
   "name": "assisted-writer",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "An author-led desktop writing studio",
   "main": "electron/main.cjs",
