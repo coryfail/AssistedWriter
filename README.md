@@ -69,11 +69,11 @@ If a chapter changed since a draft started, Assisted Writer keeps the draft and 
 
 ### Away from home
 
-In a build with Internet sharing enabled, open a book, choose **Web Access → Internet · private link**, and select **Create private link**. Open the full link in any browser. No VPN, router configuration, sign-in, or additional app is needed. The desktop stays awake and connected while you write. Keep the link private: it grants access to the open manuscript until you turn Web Access off. Starting another share generates a new link.
+Open a book, choose **Web Access → Internet · private link**, and select **Create private link**. Open the full link in any browser. No VPN, router configuration, sign-in, or additional app is needed. The desktop stays awake and connected while you write. Keep the link private: it grants access to the open manuscript until you turn Web Access off. Starting another share generates a new link.
 
 The desktop makes an outbound connection to the hosted relay. The browser uses the key in the link fragment to encrypt chapter requests and responses. The relay forwards encrypted messages in memory and does not receive the fragment or store book files. The browser still trusts the web code delivered by the relay. The link's key is kept in the current tab's session storage for reloads; use the original link to open another tab.
 
-[Maintainer setup for the relay](relay/README.md) is needed once before distributing an Internet-enabled build. Writers never enter a server address. Unconfigured builds continue to support Home Wi-Fi.
+The app build includes the [hosted relay](relay/README.md) address. Writers never enter a server address. Home Wi-Fi is also available.
 
 ## Git for each book
 

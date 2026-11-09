@@ -19,19 +19,17 @@ ASSISTED_WRITER_RELAY_URL=http://127.0.0.1:48732 npm start
 
 Open a disposable book, create a private link from **Web Access**, and open it on the same Mac. The loopback URL is for development only and is rejected by packaged apps.
 
-## One-time deployment (maintainers)
+## Deployments (maintainers)
 
 The supplied Fly config runs a single continuously available Machine. Live connections are held in memory, so do not add replicas without introducing shared routing. Deployment requires an authorized Fly account and can incur [hosting charges](https://fly.io/docs/about/pricing/).
 
 The initial relay supports up to 48 connected desktops, with a lower per-IP limit and request and concurrency limits. It uses the Fly Proxy client IP only when running on Fly, and bounds delivered asset and encrypted payload traffic to 1 GiB per UTC day in memory. This is an abuse guardrail, not a guaranteed billing cap; it resets if the process restarts.
 
 ```sh
-fly apps create YOUR_RELAY_APP
-fly deploy --config fly.relay.toml --app YOUR_RELAY_APP --ha=false \
-  --env RELAY_PUBLIC_ORIGIN=https://YOUR_RELAY_APP.fly.dev
-curl --fail https://YOUR_RELAY_APP.fly.dev/health
+fly deploy --remote-only --config fly.relay.toml --ha=false
+curl --fail https://assisted-writer-relay.fly.dev/health
 ```
 
-Set the GitHub Actions repository variable `ASSISTED_WRITER_RELAY_URL` to the verified HTTPS origin, or provide it when building a signed package locally. Restart the app using the new build, create a private link with a disposable book, and verify it from cellular before distributing the build. The hosted origin is public configuration; there is no bundled relay password. Writers only use **Create private link** and a browser.
+New app builds default to the verified HTTPS origin at `https://assisted-writer-relay.fly.dev`. To use a different relay, override `ASSISTED_WRITER_RELAY_URL` in the build environment or the GitHub Actions repository variables. Create a private link with a disposable book to verify any new endpoint before distributing a build. The hosted origin is public configuration; there is no bundled relay password. Writers only use **Create private link** and a browser.
 
 Turning off Web Access or leaving the shared book closes the outbound connection and invalidates the link. Brief outages reconnect with the same link while sharing stays enabled. A relay restart interrupts any save in progress; the existing draft recovery and revision checks protect the browser draft.

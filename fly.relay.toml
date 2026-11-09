@@ -1,4 +1,8 @@
+app = "assisted-writer-relay"
 primary_region = "iad"
+
+[env]
+  RELAY_PUBLIC_ORIGIN = "https://assisted-writer-relay.fly.dev"
 
 [build]
   dockerfile = "relay/Dockerfile"
