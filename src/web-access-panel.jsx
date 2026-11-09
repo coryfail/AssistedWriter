@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Radio } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 
 export function WebAccessPanel({ api, bookTitle, beforeStart }) {
   const [status, setStatus] = useState(null);
@@ -50,26 +51,37 @@ export function WebAccessPanel({ api, bookTitle, beforeStart }) {
 
   const addresses = status?.addresses || [];
   const selected = addresses.some((item) => item.address === address) ? address : addresses[0]?.address;
+  const remote = status?.mode === "remote";
   return <>
     <div className="eyebrow">DESKTOP HOST</div>
     <h2>Web Access</h2>
     {error && <p className="web-access-error" role="alert">{error}</p>}
     {!status ? <p>Checking network…</p> : status.enabled ? <>
       <p><strong>{status.bookTitle}</strong> {status.connected === false ? "is reconnecting" : "is shared"}. Keep this desktop app open and your computer awake.</p>
-      {status.mode === "remote" && <p>Open the private link in any browser. Anyone with the full link can edit the manuscript, book notes, and chapter notes until you turn Web Access off.</p>}
-      <label>{status.mode === "remote" ? "Private writing link" : "Open this address on the other device"}
+      <div className="web-access-scan">
+        <QRCodeSVG value={status.url} size={196} level="M" marginSize={4} shapeRendering="crispEdges"
+          title={remote ? "QR code for the private writing link" : "QR code for the home Wi-Fi address"} />
+        <div className="web-access-scan-details">
+          <strong>Scan with your phone</strong>
+          <p>{remote
+            ? "Point your camera at the code, then open the link in your browser."
+            : "Connect to the same Wi-Fi, scan with your camera, then enter the pairing code in your browser."}</p>
+          {remote ? <p>Anyone with this QR code or link can edit the manuscript and notes until you turn Web Access off.</p> :
+            <div className="web-access-code">
+              <strong>Pairing code</strong>
+              <output aria-label="Pairing code">{status.code || "—"}</output>
+              <span>{status.code ? "Works once and expires after five minutes." : "Generate another code to pair a new device."}</span>
+              <button className="secondary" disabled={busy} onClick={() => run(api.webRenewCode)}>New code</button>
+            </div>}
+        </div>
+      </div>
+      <label>{remote ? "Private writing link" : "Home Wi-Fi address"}
         <input ref={urlInput} value={status.url} readOnly onFocus={(event) => event.target.select()} />
       </label>
       <button className="secondary" onClick={copyAddress}>{copied ? "Link copied" : "Copy link"}</button>
-      {status.mode !== "remote" && <div className="web-access-code">
-        <strong>Pairing code</strong>
-        <output aria-label="Pairing code">{status.code || "—"}</output>
-        <span>{status.code ? "Works once and expires after five minutes." : "Generate another code to pair a new device."}</span>
-        <button className="secondary" disabled={busy} onClick={() => run(api.webRenewCode)}>New code</button>
-      </div>}
-      {status.mode !== "remote" && <p role="status">{status.devices} {status.devices === 1 ? "device" : "devices"} paired</p>}
+      {!remote && <p role="status">{status.devices} {status.devices === 1 ? "device" : "devices"} paired</p>}
       <div className="web-access-actions">
-        {status.mode !== "remote" && <button className="secondary" disabled={busy || !status.devices} onClick={() => run(api.webDisconnect)}>Disconnect all devices</button>}
+        {!remote && <button className="secondary" disabled={busy || !status.devices} onClick={() => run(api.webDisconnect)}>Disconnect all devices</button>}
         <button className="primary" disabled={busy} onClick={() => run(api.webStop)}>Turn off Web Access</button>
       </div>
     </> : <>

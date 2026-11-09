@@ -1,6 +1,6 @@
 {
   "name": "assisted-writer",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "description": "An author-led desktop writing studio",
   "main": "electron/main.cjs",
@@ -55,6 +55,7 @@
     "marked": "^16.0.0",
     "openai": "^6.0.0",
     "pdfkit": "^0.17.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "ws": "^8.22.2"

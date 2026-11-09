@@ -60,7 +60,7 @@ The Characters and Locations views support any number of named entries. Each ent
 
 1. Open the book on the desktop and select **Web Access** in the library sidebar.
 2. On a trusted home network, select the desktop’s network address and choose **Enable Web Access**. If macOS asks whether the app can accept incoming connections, allow it to enable this feature.
-3. On a phone, tablet, or computer on the same network, open the exact address shown and enter the eight-digit pairing code. Codes expire after five minutes and work once. Use **New code** to pair another device.
+3. On a phone or tablet on the same network, scan the QR code with your camera. You can also open the displayed address in a browser. Enter the eight-digit pairing code to connect. Codes expire after five minutes and work once. Use **New code** to pair another device.
 4. Choose **Manuscript**, **Book notes**, or **Chapter notes**. The browser autosaves to the same Markdown files the desktop uses. Use **Preview notes** to read formatted notes and **Save now** to retry a pending save. To stop sharing, use **Turn off Web Access**, leave the shared book, or close the desktop window.
 
 The desktop must stay awake, with the book open and reachable. **Home Wi-Fi** serves one book at a time over unencrypted HTTP on the selected private IPv4 interface (port `48731`). Use it only on a trusted home network; don't forward that port from the internet. The browser can read and edit the manuscript, book notes, and chapter notes. Book management, story trackers, AI context, Git, exports, and account settings remain on the desktop. There is no separate cloud copy or GitHub sign-in.
@@ -69,7 +69,7 @@ If a chapter or note changed since a draft started, Assisted Writer keeps the dr
 
 ### Away from home
 
-Open a book, choose **Web Access → Internet · private link**, and select **Create private link**. Open the full link in any browser. No VPN, router configuration, sign-in, or additional app is needed. The desktop stays awake and connected while you write. Keep the link private: it grants access to the open manuscript and its book and chapter notes until you turn Web Access off. Starting another share generates a new link.
+Open a book, choose **Web Access → Internet · private link**, and select **Create private link**. Scan the QR code with your phone or open the full link in any browser. No VPN, router configuration, sign-in, or additional app is needed. The desktop stays awake and connected while you write. Keep the QR code and link private. Either grants access to the open manuscript and its book and chapter notes until you turn Web Access off. Starting another share generates a new link.
 
 The desktop makes an outbound connection to the hosted relay. The browser uses the key in the link fragment to encrypt requests and responses for chapters and notes. The relay forwards encrypted messages in memory and does not receive the fragment or store book files. The browser still trusts the web code delivered by the relay. The link's key is kept in the current tab's session storage for reloads; use the original link to open another tab.
 
