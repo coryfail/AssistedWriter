@@ -69,19 +69,11 @@ If a chapter changed since a draft started, Assisted Writer keeps the draft and 
 
 ### Away from home
 
-1. Install and sign in to [Tailscale on the desktop](https://tailscale.com/docs/install/mac) and on your phone or tablet. Connect both to the same Tailscale network.
-2. On the desktop, run the following in Terminal. Keep it running and follow any prompt to enable HTTPS for [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve).
+In a build with Internet sharing enabled, open a book, choose **Web Access → Internet · private link**, and select **Create private link**. Open the full link in any browser. No VPN, router configuration, sign-in, or additional app is needed. The desktop stays awake and connected while you write. Keep the link private: it grants access to the open manuscript until you turn Web Access off. Starting another share generates a new link.
 
-   ```sh
-   tailscale serve --https=8443 http://127.0.0.1:48731
-   ```
+The desktop makes an outbound connection to the hosted relay. The browser uses the key in the link fragment to encrypt chapter requests and responses. The relay forwards encrypted messages in memory and does not receive the fragment or store book files. The browser still trusts the web code delivered by the relay. The link's key is kept in the current tab's session storage for reloads; use the original link to open another tab.
 
-   If the standalone Mac app is installed but the command isn't on your PATH, use `/Applications/Tailscale.app/Contents/MacOS/Tailscale` in place of `tailscale`. Choose a different Serve HTTPS port if 8443 is already in use.
-
-3. In Assisted Writer, choose **Web Access → Away from home · Tailscale**, paste the full HTTPS address printed by Serve (including its port), then enable Web Access.
-4. Open that address on your other device and enter the desktop pairing code. This works over cellular or another Wi-Fi network while that device is connected to Tailscale.
-
-Remote mode listens only on the Mac's loopback interface. It requires the configured HTTPS host and a signed-in Tailscale device, keeps browser sessions tied to their Tailscale identity, and rejects public Funnel traffic. Use **Serve**, not **Funnel**. To stop the forwarding session too, press Ctrl+C in the Terminal window running Serve.
+[Maintainer setup for the relay](relay/README.md) is needed once before distributing an Internet-enabled build. Writers never enter a server address. Unconfigured builds continue to support Home Wi-Fi.
 
 ## Git for each book
 

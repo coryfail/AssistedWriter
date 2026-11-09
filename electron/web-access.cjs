@@ -6,12 +6,12 @@ const { randomBytes, randomInt, timingSafeEqual } = require("node:crypto");
 const book = require("./book.cjs");
 
 const WEB_PORT = 48731;
-const TAILSCALE_COMMAND = "tailscale serve --https=8443 http://127.0.0.1:" + WEB_PORT;
 const PAIR_MS = 5 * 60 * 1000;
 const SESSION_MS = 12 * 60 * 60 * 1000;
 const MAX_ATTEMPTS = 8;
 const MAX_SESSIONS = 8;
 const MAX_JSON = 3 * 1024 * 1024;
+const SESSION_COOKIE = "aw_session";
 const hash = /^[a-f0-9]{64}$/;
 const types = {
   ".js": "text/javascript; charset=utf-8",
@@ -33,18 +33,6 @@ function networkAddresses() {
   return Object.entries(os.networkInterfaces()).flatMap(([name, entries]) =>
     entries.filter((entry) => entry.family === "IPv4" && !entry.internal && privateIPv4(entry.address))
       .map(({ address }) => ({ name, address })));
-}
-
-function tailscaleOrigin(value) {
-  let url;
-  try { if (typeof value === "string" && value.length <= 512) url = new URL(value.trim()); }
-  catch { /* The message below also covers malformed URLs. */ }
-  const labels = url?.hostname.split(".") || [];
-  if (url?.protocol !== "https:" || url.username || url.password || url.search || url.hash ||
-      url.pathname !== "/" || labels.length < 4 || labels.slice(-2).join(".") !== "ts.net" ||
-      labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)))
-    throw new Error("Enter the HTTPS .ts.net address shown by Tailscale Serve, without a path.");
-  return url.origin;
 }
 
 function error(status, message) {
@@ -75,12 +63,8 @@ async function readJSON(req) {
   return value;
 }
 
-async function startWebAccess({ root, host, remoteUrl, dist, port = WEB_PORT, onSave = () => {}, now = Date.now }) {
-  const remote = remoteUrl !== undefined;
-  const publicOrigin = remote ? tailscaleOrigin(remoteUrl) : null;
-  if (remote) host = "127.0.0.1";
-  else if (host !== "127.0.0.1" && !privateIPv4(host)) throw new Error("Choose a private network address.");
-  const cookieName = remote ? "__Host-aw_session" : "aw_session";
+async function startWebAccess({ root, host, dist, port = WEB_PORT, onSave = () => {}, now = Date.now }) {
+  if (host !== "127.0.0.1" && !privateIPv4(host)) throw new Error("Choose a private network address.");
   const sharedRoot = await fs.realpath(root);
   const initialBook = await book.withBookOperation(sharedRoot, book.sharedBook);
   const assets = new Map([["/", { file: path.join(dist, "web.html"), type: "text/html; charset=utf-8" }]]);
@@ -98,25 +82,23 @@ async function startWebAccess({ root, host, remoteUrl, dist, port = WEB_PORT, on
     return status();
   }
   function prune() {
-    for (const [token, value] of sessions) if (value.expires <= now()) sessions.delete(token);
+    for (const [token, expires] of sessions) if (expires <= now()) sessions.delete(token);
   }
   function status() {
     prune();
     const valid = pairing && pairing.expires > now() && pairing.attempts < MAX_ATTEMPTS;
-    return { enabled: !closed, mode: remote ? "remote" : "lan", url: origin, bookTitle: initialBook.title, code: valid ? pairing.code : null,
+    return { enabled: !closed, url: origin, bookTitle: initialBook.title, code: valid ? pairing.code : null,
       codeExpires: valid ? pairing.expires : null, devices: sessions.size };
   }
-  function session(req, identity) {
+  function session(req) {
     prune();
-    const token = req.headers.cookie?.match(new RegExp("(?:^|;\\s*)" + cookieName + "=([a-f0-9]{64})(?:;|$)"))?.[1];
-    const paired = sessions.get(token);
-    if (closed || !paired || paired.identity !== identity)
+    const token = req.headers.cookie?.match(/(?:^|;\s*)aw_session=([a-f0-9]{64})(?:;|$)/)?.[1];
+    if (closed || !token || !sessions.has(token))
       throw error(401, "Pair with the desktop to continue.");
     return token;
   }
   function setCookie(res, token, age) {
-    res.setHeader("Set-Cookie", cookieName + "=" + token + (remote ? "; Path=/; Secure" : "; Path=/api") +
-      "; HttpOnly; SameSite=Strict; Max-Age=" + age);
+    res.setHeader("Set-Cookie", SESSION_COOKIE + "=" + token + "; Path=/api; HttpOnly; SameSite=Strict; Max-Age=" + age);
   }
   function json(res, code, value) {
     res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" });
@@ -131,19 +113,7 @@ async function startWebAccess({ root, host, remoteUrl, dist, port = WEB_PORT, on
     if (closed) throw error(503, "Web Access is off.");
     if (req.headers.host !== authority) throw error(403, "Open the address shown in the desktop app.");
     const peer = req.socket.remoteAddress;
-    let identity = null;
-    if (remote) {
-      // Only the local Serve proxy can supply this identity. Serve overwrites
-      // these headers; its public Funnel does not supply a user identity.
-      const login = req.headers["tailscale-user-login"];
-      if (peer !== "127.0.0.1" || req.headers["x-forwarded-host"] !== authority ||
-          req.headers["x-forwarded-proto"] !== "https" || req.headers["tailscale-funnel-request"] !== undefined ||
-          typeof login !== "string" || !login.trim() || login.length > 512 || login.includes(","))
-        throw error(403, "Use the private HTTPS address from Tailscale Serve on a signed-in device.");
-      identity = login;
-    } else if (peer !== "127.0.0.1" && !privateIPv4(peer)) {
-      throw error(403, "Web Access is limited to the local network.");
-    }
+    if (peer !== "127.0.0.1" && !privateIPv4(peer)) throw error(403, "Web Access is limited to the local network.");
     if (!req.url?.startsWith("/") || req.url.startsWith("//") || req.url.includes("\\"))
       throw error(400, "Invalid address.");
     const url = new URL(req.url, origin);
@@ -176,20 +146,20 @@ async function startWebAccess({ root, host, remoteUrl, dist, port = WEB_PORT, on
       if (sessions.size >= MAX_SESSIONS) throw error(429, "Disconnect devices on the desktop before pairing another.");
       pairing = null;
       const token = randomBytes(32).toString("hex");
-      sessions.set(token, { expires: now() + SESSION_MS, identity });
+      sessions.set(token, now() + SESSION_MS);
       setCookie(res, token, SESSION_MS / 1000);
       return json(res, 200, { paired: true });
     }
 
-    const token = session(req, identity);
+    session(req);
     if (req.method === "POST" && route === "/api/logout") {
-      sessions.delete(token);
+      sessions.delete(session(req));
       setCookie(res, "", 0);
       return json(res, 200, { paired: false });
     }
     if (req.method === "GET" && route === "/api/book") {
       const data = await book.withBookOperation(sharedRoot, (root) => {
-        session(req, identity);
+        session(req);
         if (root !== sharedRoot) throw error(404, "The shared book moved.");
         return book.sharedBook(root);
       });
@@ -209,7 +179,7 @@ async function startWebAccess({ root, host, remoteUrl, dist, port = WEB_PORT, on
         draft = { body, revision, manifestRevision };
       }
       const data = await book.withBookOperation(sharedRoot, (root) => {
-        session(req, identity);
+        session(req);
         if (root !== sharedRoot) throw error(404, "The shared book moved.");
         return book.sharedChapter(root, id, draft);
       });
@@ -239,13 +209,12 @@ async function startWebAccess({ root, host, remoteUrl, dist, port = WEB_PORT, on
       resolve();
     });
   });
-  const localPort = server.address().port;
-  origin = publicOrigin || ("http://" + host + ":" + localPort);
-  authority = new URL(origin).host;
+  authority = host + ":" + server.address().port;
+  origin = "http://" + authority;
   renewCode();
 
   return {
-    status, renewCode, localPort,
+    status, renewCode,
     disconnect() { sessions.clear(); return renewCode(); },
     stop() {
       closed = true;
@@ -259,4 +228,4 @@ async function startWebAccess({ root, host, remoteUrl, dist, port = WEB_PORT, on
   };
 }
 
-module.exports = { networkAddresses, privateIPv4, startWebAccess, tailscaleOrigin, TAILSCALE_COMMAND };
+module.exports = { networkAddresses, privateIPv4, startWebAccess };

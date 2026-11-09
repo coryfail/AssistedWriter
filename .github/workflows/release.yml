@@ -120,6 +120,7 @@ jobs:
 
       - name: Build, sign, and notarize universal Mac app
         env:
+          ASSISTED_WRITER_RELAY_URL: ${{ vars.ASSISTED_WRITER_RELAY_URL }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           BASE_VERSION: ${{ steps.version.outputs.base }}

@@ -5,7 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const http = require("node:http");
 const book = require("../electron/book.cjs");
-const { startWebAccess, tailscaleOrigin } = require("../electron/web-access.cjs");
+const { startWebAccess } = require("../electron/web-access.cjs");
 
 async function setup(t, options = {}) {
   const parent = await fs.mkdtemp(path.join(os.tmpdir(), "aw-web-test-"));
@@ -166,72 +166,4 @@ test("a linked chapter cannot expose or replace a file outside the shared book",
   assert.equal((await request(chapter, { method: "PUT", cookie, body: saveBody(initial, "Blocked") })).status, 500);
   assert.equal(await fs.readFile(external, "utf8"), "# Private\n\nExternal contents.\n");
   assert.ok((await fs.lstat(file)).isSymbolicLink());
-});
-
-test("remote configuration only accepts a root HTTPS Tailscale Serve address", () => {
-  assert.equal(tailscaleOrigin(" https://writing-mac.my-network.ts.net:8443/ "), "https://writing-mac.my-network.ts.net:8443");
-  for (const url of [
-    "http://writing-mac.my-network.ts.net:8443",
-    "https://writing-mac.my-network.ts.net.evil.example",
-    "https://writing-mac.my-network.ts.net/book",
-    "https://user:secret@writing-mac.my-network.ts.net",
-    "https://writing-mac.my-network.ts.net?token=bad",
-    "https://127.0.0.1:8443",
-  ]) assert.throws(() => tailscaleOrigin(url), /HTTPS .ts.net address/);
-});
-
-test("the loopback origin accepts private HTTPS proxy traffic and rejects Funnel and copied sessions", async (t) => {
-  const remoteUrl = "https://writing-mac.my-network.ts.net:8443";
-  const authority = new URL(remoteUrl).host;
-  const { server, chapter, root } = await setup(t, { remoteUrl, host: "0.0.0.0" });
-  assert.equal(server.status().url, remoteUrl);
-  assert.equal(server.status().mode, "remote");
-
-  // The local request models the headers Tailscale Serve sends after TLS
-  // termination. The application does not rely on headers on its LAN port.
-  const proxy = {
-    Host: authority,
-    "X-Forwarded-Host": authority,
-    "X-Forwarded-Proto": "https",
-    "Tailscale-User-Login": "writer@example.test",
-  };
-  function send(endpoint, { method = "GET", payload, headers = {} } = {}) {
-    return new Promise((resolve, reject) => {
-      const req = http.request({ host: "127.0.0.1", port: server.localPort, path: endpoint, method, headers: {
-        ...(method === "GET" ? {} : { Origin: remoteUrl }),
-        ...(payload === undefined ? {} : { "Content-Type": "application/json" }),
-        ...headers,
-      } }, (response) => {
-        const chunks = [];
-        response.on("data", (chunk) => chunks.push(chunk));
-        response.on("error", reject);
-        response.on("end", () => resolve({
-          status: response.statusCode, headers: response.headers, body: Buffer.concat(chunks).toString("utf8"),
-        }));
-      });
-      req.on("error", reject);
-      req.end(payload === undefined ? undefined : JSON.stringify(payload));
-    });
-  }
-  assert.equal((await send("/")).status, 403);
-  assert.equal((await send("/", { headers: { Host: authority } })).status, 403);
-  assert.equal((await send("/", { headers: { ...proxy, "X-Forwarded-Proto": "http" } })).status, 403);
-  assert.equal((await send("/", { headers: { ...proxy, "X-Forwarded-Host": "other.my-network.ts.net:8443" } })).status, 403);
-  assert.equal((await send("/", { headers: { ...proxy, "Tailscale-User-Login": "" } })).status, 403);
-  assert.equal((await send("/", { headers: { ...proxy, "Tailscale-Funnel-Request": "?1" } })).status, 403);
-  assert.equal((await send("/", { headers: proxy })).status, 200);
-  assert.equal((await send("/api/book", { headers: proxy })).status, 401);
-  const paired = await send("/api/pair", { method: "POST", headers: proxy, payload: { code: server.status().code } });
-  assert.equal(paired.status, 200);
-  const cookie = paired.headers["set-cookie"][0];
-  assert.match(cookie, /^__Host-aw_session=[0-9a-f]{64}; Path=\/; Secure; HttpOnly; SameSite=Strict;/);
-  const authenticated = { ...proxy, Cookie: cookie.split(";")[0] };
-  assert.equal((await send("/api/book", { headers: { ...authenticated, "Tailscale-User-Login": "another@example.test" } })).status, 401);
-  const chapterResponse = await send(chapter, { headers: authenticated });
-  assert.equal(chapterResponse.status, 200);
-  const draft = saveBody(JSON.parse(chapterResponse.body), "Written from another network.");
-  assert.equal((await send(chapter, { method: "PUT", payload: draft,
-    headers: { ...authenticated, Origin: "http://" + authority } })).status, 403);
-  assert.equal((await send(chapter, { method: "PUT", payload: draft, headers: authenticated })).status, 200);
-  assert.equal((await book.readBook(root)).chapters[0].body, "Written from another network.");
 });

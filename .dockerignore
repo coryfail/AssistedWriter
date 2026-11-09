@@ -1,0 +1,16 @@
+**
+!package.json
+!package-lock.json
+!vite.config.js
+!index.html
+!web.html
+!src/
+!src/**
+!scripts/
+!scripts/write-relay-config.cjs
+!electron/
+!electron/relay-crypto.mjs
+!electron/relay-origin.cjs
+!relay/
+!relay/server.cjs
+!relay/Dockerfile

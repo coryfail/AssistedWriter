@@ -4,15 +4,24 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import { ArrowRight, BookOpen, ChevronDown, Download, LogOut, Radio } from "lucide-react";
 import { FormattingToolbar, manuscriptExtensions } from "./manuscript-editor.jsx";
 import { clearDraft, downloadDraft, readDraft, storeDraft } from "./drafts.mjs";
+import { browserRelay } from "./relay-browser.mjs";
 import "./style.css";
 import "./web.css";
+
+const remoteLink = browserRelay();
 
 async function request(path, method = "GET", body) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
-  const unreachable = "Can’t reach the desktop. Check that it’s awake and Web Access is on." +
-    (location.protocol === "https:" ? " Make sure this device is connected to Tailscale." : "");
+  const unreachable = "Can’t reach the desktop. Check that it’s awake and Web Access is on.";
   try {
+    if (remoteLink) {
+      try { return await remoteLink.request(path, method, body, controller.signal); }
+      catch (error) {
+        if (error.status) throw error;
+        throw new Error(unreachable);
+      }
+    }
     let response;
     try {
       response = await fetch(path, {
@@ -397,7 +406,7 @@ function App() {
       setExpired(false);
       setError("");
     } catch (failure) {
-      if (failure.status !== 401 || book) throw failure;
+      if (failure.status !== 401 || book || remoteLink) throw failure;
       setBook(null);
     }
   }
@@ -413,11 +422,14 @@ function App() {
 
   if (book) return <>
     {expired && !pairAgain && <div className="web-reconnect" role="status">
-      <span>Pair again to reconnect to the desktop. Your open draft stays here.</span>
-      <button className="web-quiet" onClick={() => setPairAgain(true)}>Pair again</button>
+      <span>{remoteLink ? "Open a new private link from the desktop to reconnect. Your draft stays here." : "Pair again to reconnect to the desktop. Your open draft stays here."}</span>
+      {!remoteLink && <button className="web-quiet" onClick={() => setPairAgain(true)}>Pair again</button>}
     </div>}
     <Workspace key={book.id} book={book} updateBook={setBook} onUnauthorized={onUnauthorized} logout={async () => {
-      await request("/api/logout", "POST", {});
+      if (remoteLink) {
+        remoteLink.forget();
+        setError("Open the private link again to reconnect.");
+      } else await request("/api/logout", "POST", {});
       setBook(null);
       setExpired(false);
     }} />
@@ -436,10 +448,10 @@ function App() {
       </section>
       <section className="web-pair">
         <span className="web-folio">01 / CONNECTION</span>
-        <h2>Pair your browser</h2>
+        <h2>{remoteLink ? "Open shared book" : "Pair your browser"}</h2>
         {loading ? <p role="status">Looking for a connection…</p> : <>
           {error && <><p className="web-error" role="alert">{error}</p><button className="web-quiet" onClick={initial}>Try again</button></>}
-          <PairForm onPair={connect} />
+          {!remoteLink && <PairForm onPair={connect} />}
         </>}
       </section>
     </div>

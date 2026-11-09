@@ -17,7 +17,16 @@ const book = require("./book.cjs");
 const { review, generateCommitMessage } = require("./ai.cjs");
 const { exportBook } = require("./export.cjs");
 const git = require("./git.cjs");
-const { networkAddresses, startWebAccess, TAILSCALE_COMMAND } = require("./web-access.cjs");
+const { networkAddresses, startWebAccess } = require("./web-access.cjs");
+const { startRelayHost } = require("./relay-host.cjs");
+const { relayOrigin } = require("./relay-origin.cjs");
+
+const distDirectory = path.join(__dirname, "..", "dist");
+let relayUrl = null;
+try {
+  const config = JSON.parse(nativeFs.readFileSync(path.join(distDirectory, "relay-config.json"), "utf8"));
+  relayUrl = relayOrigin(config.url, { allowLocal: !app.isPackaged });
+} catch { /* Unconfigured builds can still share on the home network. */ }
 
 let mainWindow;
 let activeBookWatch = null;
@@ -233,7 +242,7 @@ app.on("window-all-closed", () => {
 app.on("before-quit", stopWebAccess);
 
 function webAccessStatus() {
-  return { ...(webAccess?.status() || { enabled: false }), addresses: networkAddresses(), remoteCommand: TAILSCALE_COMMAND };
+  return { ...(webAccess?.status() || { enabled: false }), addresses: networkAddresses(), internetAvailable: Boolean(relayUrl) };
 }
 
 function stopWebAccess() {
@@ -248,17 +257,14 @@ ipcMain.handle("web:start", async (_event, options) => {
   if (webAccess || webStarting) throw new Error("Web Access is already on or starting.");
   const root = activeBookWatch?.root;
   if (!root) throw new Error("Open a book before enabling Web Access.");
-  const { mode, host, remoteUrl } = options || {};
+  const { mode, host } = options || {};
   if (mode !== "lan" && mode !== "remote") throw new Error("Choose a Web Access connection mode.");
   if (mode === "lan" && !networkAddresses().some((item) => item.address === host))
     throw new Error("Choose an available home network address.");
-  if (mode === "remote" && typeof remoteUrl !== "string")
-    throw new Error("Enter the HTTPS address shown by Tailscale Serve.");
-  const starting = startWebAccess({
-    root, host, dist: path.join(__dirname, "..", "dist"),
-    ...(mode === "remote" ? { remoteUrl } : {}),
-    onSave() { if (activeBookWatch) scheduleBookRefresh(activeBookWatch, ""); },
-  });
+  const onSave = () => { if (activeBookWatch) scheduleBookRefresh(activeBookWatch, ""); };
+  const starting = mode === "remote"
+    ? startRelayHost({ root, relayUrl, allowLocal: !app.isPackaged, onSave })
+    : startWebAccess({ root, host, dist: distDirectory, onSave });
   webStarting = starting;
   try {
     const access = await starting;
@@ -270,8 +276,8 @@ ipcMain.handle("web:start", async (_event, options) => {
   }
 });
 ipcMain.handle("web:stop", async () => { await stopWebAccess(); return webAccessStatus(); });
-ipcMain.handle("web:renew-code", () => { webAccess?.renewCode(); return webAccessStatus(); });
-ipcMain.handle("web:disconnect", () => { webAccess?.disconnect(); return webAccessStatus(); });
+ipcMain.handle("web:renew-code", () => { webAccess?.renewCode?.(); return webAccessStatus(); });
+ipcMain.handle("web:disconnect", () => { webAccess?.disconnect?.(); return webAccessStatus(); });
 
 function handleBook(channel, handler) {
   ipcMain.handle(channel, (event, root, ...args) =>
