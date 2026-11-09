@@ -138,6 +138,15 @@ jobs:
             xcrun stapler validate "$1"
           }
           verify_app "$app"
+          node <<'NODE'
+          const assert = require("node:assert/strict");
+          const { extractFile } = require("@electron/asar");
+          const { relayOrigin } = require("./electron/relay-origin.cjs");
+          const archive = "release/mac-universal/Assisted Writer.app/Contents/Resources/app.asar";
+          const config = JSON.parse(extractFile(archive, "dist/relay-config.json").toString());
+          assert.ok(relayOrigin(config.url), "The packaged relay must be a root HTTPS URL.");
+          assert.equal(config.url, require("./dist/relay-config.json").url);
+          NODE
           architectures="$(lipo -archs "$app/Contents/MacOS/Assisted Writer")"
           [[ "$architectures" == *arm64* && "$architectures" == *x86_64* ]]
           app_version="$(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/Info.plist")"

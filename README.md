@@ -19,7 +19,7 @@ npm run package:mac
 
 The renderer build is placed under `dist/`; packaged Mac apps are placed under `release/`. Local builds without a Developer ID certificate and Apple notarization credentials are for development only and may be blocked by macOS.
 
-Each push to `main` runs the Mac release workflow. It turns the source version (currently `0.5.0`) into a unique prerelease such as `v0.5.0-beta.22`. Pushing a matching version tag such as `v0.5.0` publishes that exact stable release. Both paths build one universal app for Intel and Apple Silicon Macs and publish a DMG, ZIP, update metadata, and SHA-256 checksum file. The workflow keeps each release in draft until all assets are uploaded, so the updater cannot see an incomplete release. A release is published only after code-signature, Gatekeeper, notarization, architecture, DMG, and ZIP checks pass.
+Each push to `main` runs the Mac release workflow. It turns the source version into a unique prerelease such as `v0.7.0-beta.42`. Pushing a matching version tag such as `v0.7.0` publishes that exact stable release. Both paths build one universal app for Intel and Apple Silicon Macs and publish a DMG, ZIP, update metadata, and SHA-256 checksum file. The workflow keeps each release in draft until all assets are uploaded, so the updater cannot see an incomplete release. A release is published only after code-signature, Gatekeeper, notarization, architecture, DMG, and ZIP checks pass.
 
 Installed apps can check for the latest signed GitHub release from Settings → App updates. Downloading an update replaces only the app bundle. Book folders stay where the author created them, while recent books and the encrypted API key stay in macOS Application Support and Keychain-backed app data.
 
