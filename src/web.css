@@ -65,10 +65,8 @@
 .web-paper .web-prose { font-size: 1rem; min-height: 40vh; }
 .web-paper .web-prose .tiptap { min-height: 40vh; }
 .web-source { width: 100%; min-height: 42vh; padding: 12px; resize: vertical; font: 1rem/1.65 ui-monospace, monospace; }
-.web-note-caption { padding-inline: 12px; font-size: .82rem; color: var(--web-muted); }
-.web-note-source { font-family: "Libre Baskerville", Georgia, serif; }
-.web-note-preview { min-height: 42vh; color: var(--web-ink); overflow-wrap: anywhere; }
-.web-note-preview pre { overflow-x: auto; }
+.web-paper .reference-prose { margin-top: 0; }
+.web-paper .reference-prose h1 { font-size: 1.4rem; margin: 0.9em 0 0.6em; }
 .web-subtle { font-size: .84rem; color: var(--web-muted); }
 .web-conflict { border-left: 3px solid var(--web-accent); padding: 12px 14px; margin-bottom: 17px; background: #f3e4d3; }
 .web-conflict p { margin: 5px 0; color: var(--web-muted); line-height: 1.48; }

@@ -8,6 +8,8 @@ export const manuscriptExtensions = () => [
   StarterKit.configure({ heading: { levels: [2, 3] } }), Markdown,
 ];
 
+export const referenceExtensions = () => [StarterKit, Markdown];
+
 export function FormattingToolbar({ editor, hint }) {
   return <div className="editor-toolbar">
     <div className="tool-group">

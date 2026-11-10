@@ -1,9 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import { Markdown } from "@tiptap/markdown";
-import { FormattingToolbar, manuscriptExtensions } from "./manuscript-editor.jsx";
+import { FormattingToolbar, manuscriptExtensions, referenceExtensions } from "./manuscript-editor.jsx";
 import { WebAccessPanel } from "./web-access-panel.jsx";
 import { downloadDraft, readDraft, storeDraft, clearDraft } from "./drafts.mjs";
 import { MarkdownDisplay } from "./markdown-display.mjs";
@@ -60,7 +58,7 @@ function MarkdownEditor({ value, onChange, children }) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const editor = useEditor({
-    extensions: [StarterKit, Markdown],
+    extensions: referenceExtensions(),
     content: "",
     editorProps: { attributes: { spellcheck: "true", "aria-label": "Reference document" } },
     onUpdate: ({ editor: current }) => onChangeRef.current(current.getMarkdown()),

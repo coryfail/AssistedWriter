@@ -2,10 +2,9 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } f
 import { createRoot } from "react-dom/client";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { ArrowRight, BookOpen, ChevronDown, Download, LogOut, Radio } from "lucide-react";
-import { FormattingToolbar, manuscriptExtensions } from "./manuscript-editor.jsx";
+import { FormattingToolbar, manuscriptExtensions, referenceExtensions } from "./manuscript-editor.jsx";
 import { clearDraft, downloadDraft, readDraft, storeDraft } from "./drafts.mjs";
 import { browserRelay, privateLinkForOrigin } from "./relay-browser.mjs";
-import { MarkdownDisplay } from "./markdown-display.mjs";
 import "./style.css";
 import "./web.css";
 
@@ -41,7 +40,10 @@ async function request(path, method = "GET", body) {
 const views = { manuscript: "Manuscript", book: "Book notes", chapter: "Chapter notes" };
 const documentPath = (view, id) => view === "book" ? "/api/notes/book" :
   (view === "chapter" ? "/api/notes/chapters/" : "/api/chapters/") + encodeURIComponent(id);
-const needsSource = (body) => /<\/?[a-z][^>]*>|<!--|!\[|^\s*(?:#|#{4,6}) |^\s*\|.*\||^\s*:?-{3,}:?\s*\||^\s*[-*+] \[[ xX]\]|\[\^[^\]]+\]/im.test(body);
+function needsSource(body, isNote) {
+  if (!isNote && /^\s*(?:#|#{4,6}) /m.test(body)) return true;
+  return /<\/?[a-z][^>]*>|<!--|!\[|^\s*\|.*\||^\s*:?-{3,}:?\s*\||^\s*[-*+] \[[ xX]\]|\[\^[^\]]+\]/im.test(body);
+}
 
 function Wordmark() {
   return <div className="web-wordmark"><span className="brand-mark">AW<span>✦</span></span> Assisted Writer</div>;
@@ -114,7 +116,7 @@ const WritingPage = forwardRef(function WritingPage({ bookId, page, view, locked
   const writing = useRef(null);
   const timer = useRef(null);
   const [version, setVersion] = useState(page);
-  const [source, setSource] = useState(() => isNote || needsSource(recovery?.body ?? page.body));
+  const [source, setSource] = useState(() => needsSource(recovery?.body ?? page.body, isNote));
   const [text, setText] = useState(recovery?.body ?? page.body);
   const [conflict, setConflict] = useState(Boolean(recovery &&
     (recovery.revision !== page.revision || recovery.manifestRevision !== page.manifestRevision)));
@@ -128,12 +130,12 @@ const WritingPage = forwardRef(function WritingPage({ bookId, page, view, locked
   const [comparison, setComparison] = useState(null);
   const [discard, setDiscard] = useState(false);
   const editor = useEditor({
-    extensions: manuscriptExtensions(),
-    content: isNote ? "" : recovery?.body ?? page.body,
+    extensions: isNote ? referenceExtensions() : manuscriptExtensions(),
+    content: source ? "" : recovery?.body ?? page.body,
     contentType: "markdown",
-    editorProps: { attributes: { spellcheck: "true", "aria-label": "Manuscript" } },
+    editorProps: { attributes: { spellcheck: "true", "aria-label": views[view] } },
     onUpdate: ({ editor: current }) => {
-      if (!isNote) change(current.getMarkdown());
+      if (!source) change(current.getMarkdown());
     },
   });
 
@@ -233,10 +235,8 @@ const WritingPage = forwardRef(function WritingPage({ bookId, page, view, locked
     saved.current = next;
     setVersion(next);
     setText(next.body);
-    if (!isNote) {
-      if (needsSource(next.body)) setSource(true);
-      editor?.commands.setContent(next.body, { contentType: "markdown", emitUpdate: false });
-    }
+    if (needsSource(next.body, isNote)) setSource(true);
+    else editor?.commands.setContent(next.body, { contentType: "markdown", emitUpdate: false });
     setMessage("Saved to desktop");
   }
 
@@ -304,9 +304,8 @@ const WritingPage = forwardRef(function WritingPage({ bookId, page, view, locked
   }
 
   function toggleSource() {
-    if (isNote) { setSource(!source); return; }
     const body = draft.current?.body ?? saved.current.body;
-    if (source && needsSource(body)) return;
+    if (source && (!editor || needsSource(body, isNote))) return;
     if (source) editor?.commands.setContent(body, { contentType: "markdown", emitUpdate: false });
     setText(body);
     setSource(!source);
@@ -314,14 +313,15 @@ const WritingPage = forwardRef(function WritingPage({ bookId, page, view, locked
 
   const download = () => downloadDraft(view === "chapter" ? `${version.title} notes` : version.title,
     draft.current?.body ?? text, { includeHeading: !isNote });
+  const sourceRequired = source && needsSource(text, isNote);
 
   return <>
     <div className="web-write-tools">
-      {!isNote && !source && <FormattingToolbar editor={locked ? null : editor} />}
-      {isNote && <span className="web-note-caption">{source ? "Markdown editor" : "Reading view"}</span>}
+      {!source && <FormattingToolbar editor={locked ? null : editor} />}
       <button className="web-quiet web-source-switch" onClick={toggleSource}
-        disabled={!isNote && source && needsSource(text)}>{isNote ? (source ? "Preview notes" : "Edit notes") :
-          (source ? "Formatted view" : "Markdown source")}</button>
+        disabled={locked || sourceRequired || (source && !editor)}>
+        {source ? "Formatted editor" : "Markdown source"}
+      </button>
     </div>
     <article className="web-paper" aria-label="Writing workspace">
       <div className="web-paper-meta"><span>{views[view]}</span><span aria-hidden="true">✦</span></div>
@@ -331,7 +331,7 @@ const WritingPage = forwardRef(function WritingPage({ bookId, page, view, locked
         <button className="web-quiet" disabled={!dirty || saving || conflict || locked}
           onClick={() => flush().catch(() => {})}>Save now</button>
       </div>
-      {!isNote && source && needsSource(text) && <p className="web-subtle">Markdown source keeps this chapter’s formatting intact.</p>}
+      {sourceRequired && <p className="web-subtle">Markdown source keeps this {label}’s formatting intact.</p>}
       {storageWarning && <p className="web-error" role="alert">This browser couldn’t keep a recovery copy. Download your draft before leaving.</p>}
       {error && !conflict && <p className="web-error" role="alert">{error}</p>}
       {conflict && <section className="web-conflict" aria-label={`Saved ${label} conflict`}>
@@ -350,12 +350,10 @@ const WritingPage = forwardRef(function WritingPage({ bookId, page, view, locked
           <button className="web-quiet" onClick={useSaved} disabled={comparing}>Discard draft</button>
         </div>}
       </section>}
-      {source ? <textarea className={`web-source${isNote ? " web-note-source" : ""}`}
-        aria-label={isNote ? views[view] : "Manuscript Markdown"} value={text} readOnly={locked}
+      {source ? <textarea className="web-source" aria-label={`${views[view]} Markdown`} value={text} readOnly={locked}
         placeholder={isNote ? "Capture an idea…" : undefined}
-        onChange={(event) => change(event.target.value)} spellCheck /> : isNote
-        ? (text.trim() ? <MarkdownDisplay text={text} className="web-note-preview" /> : <p className="web-empty">No notes yet.</p>)
-        : <EditorContent editor={editor} className="prose-editor web-prose" />}
+        onChange={(event) => change(event.target.value)} spellCheck />
+        : <EditorContent editor={editor} className={`web-prose ${isNote ? "reference-prose" : "prose-editor"}`} />}
       <footer className="web-paper-footer">
         <span>{(text.trim().match(/\S+/g) || []).length.toLocaleString()} words</span>
         {dirty && !conflict && <button className="web-quiet" onClick={download}><Download size={15} /> Download draft</button>}
