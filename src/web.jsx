@@ -4,7 +4,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import { ArrowRight, BookOpen, ChevronDown, Download, LogOut, Radio } from "lucide-react";
 import { FormattingToolbar, manuscriptExtensions } from "./manuscript-editor.jsx";
 import { clearDraft, downloadDraft, readDraft, storeDraft } from "./drafts.mjs";
-import { browserRelay } from "./relay-browser.mjs";
+import { browserRelay, privateLinkForOrigin } from "./relay-browser.mjs";
 import { MarkdownDisplay } from "./markdown-display.mjs";
 import "./style.css";
 import "./web.css";
@@ -71,6 +71,29 @@ function PairForm({ onPair, dismiss }) {
       {busy ? "Pairing…" : "Pair this browser"} <ArrowRight size={18} />
     </button>
     {dismiss && <button className="web-quiet" type="button" onClick={dismiss}>Back to draft</button>}
+  </form>;
+}
+
+function PrivateLinkForm() {
+  const [value, setValue] = useState("");
+  const [invalid, setInvalid] = useState(false);
+  return <form className="web-pair-form" onSubmit={(event) => {
+    event.preventDefault();
+    const link = privateLinkForOrigin(value, location.origin);
+    if (!link) {
+      setInvalid(true);
+      return;
+    }
+    // Reload even if this is the same share and only the fragment has changed.
+    history.replaceState(null, "", link.pathname + link.hash);
+    location.reload();
+  }}>
+    <label htmlFor="private-link">Private link from your Mac</label>
+    <input id="private-link" className="web-private-link" type="text" inputMode="url" autoComplete="off"
+      autoCapitalize="none" spellCheck={false} value={value}
+      onChange={(event) => { setValue(event.target.value); setInvalid(false); }} />
+    {invalid && <p className="web-error" role="alert">Paste the full link from Web Access, including the part after #.</p>}
+    <button className="web-primary" disabled={!value.trim()}>Open shared book <ArrowRight size={18} /></button>
   </form>;
 }
 
@@ -488,15 +511,18 @@ function App() {
     <div className="web-landing-grid">
       <section className="web-intro">
         <div className="web-kicker"><Radio size={15} /> YOUR DESKTOP LIBRARY</div>
-        <h1>Pick up where<br />you left off<span>.</span></h1>
-        <p>Continue your manuscript in this browser. Your desktop keeps the book and saves your edits to its files.</p>
+        <h1>{remoteLink && !loading && error ? "Reconnect to your book" : <>Pick up where<br />you left off</>}<span>.</span></h1>
+        <p>{remoteLink && !loading && error
+          ? "Keep your Mac awake with the book open and Web Access on."
+          : "Continue your manuscript in this browser. Your desktop keeps the book and saves your edits to its files."}</p>
       </section>
       <section className="web-pair">
         <span className="web-folio">01 / CONNECTION</span>
         <h2>{remoteLink ? "Open shared book" : "Pair your browser"}</h2>
         {loading ? <p role="status">Looking for a connection…</p> : <>
-          {error && <><p className="web-error" role="alert">{error}</p><button className="web-quiet" onClick={initial}>Try again</button></>}
-          {!remoteLink && <PairForm onPair={connect} />}
+          {error && <><p className="web-error" role="alert">{error}</p>
+            {(!remoteLink || remoteLink.hasKey) && <button className="web-quiet" onClick={initial}>Try again</button>}</>}
+          {remoteLink ? <PrivateLinkForm /> : <PairForm onPair={connect} />}
         </>}
       </section>
     </div>

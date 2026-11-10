@@ -30,6 +30,7 @@
 .web-pair-form p { margin: 0 0 6px; }
 .web-pair-form input, .web-select select, .web-source { background: var(--web-paper); border: 1px solid var(--web-rule); color: var(--web-ink); min-height: 44px; border-radius: 2px; }
 .web-pair-form input { width: 100%; padding: 10px 12px; font-size: 1.25rem; letter-spacing: .16em; font-variant-numeric: tabular-nums; }
+.web-pair-form input.web-private-link { font-size: 1rem; letter-spacing: normal; }
 .web-primary, .web-quiet { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 2px; font-weight: 700; }
 .web-primary { margin-top: 4px; padding: 9px 13px; background: var(--web-accent); color: #fffaf1; border: 1px solid var(--web-accent); }
 .web-quiet { color: var(--web-accent); background: transparent; border: 0; padding: 6px 9px; }
