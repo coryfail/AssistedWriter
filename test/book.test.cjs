@@ -88,8 +88,13 @@ test("readable book files, approved edits, and publication exports", async (t) =
   );
 
   const hash = crypto.createHash("sha256").update(body).digest("hex");
+  const reviewed = await book.readBook(root);
   await assert.rejects(
     book.approveSuggestion(root, first.id, "The lamp", "A lamp", "stale"),
+    /changed since this review/,
+  );
+  await assert.rejects(
+    book.approveSuggestion(root, first.id, "The lamp", "A lamp", hash, "stale-revision"),
     /changed since this review/,
   );
   const applied = await book.approveSuggestion(
@@ -98,6 +103,7 @@ test("readable book files, approved edits, and publication exports", async (t) =
     "Something moved.",
     "A shadow moved.",
     hash,
+    reviewed.revisions.chapters[first.id],
   );
   assert.match(applied.body, /A shadow moved\./);
   assert.doesNotMatch(applied.body, /Something moved\./);
@@ -138,6 +144,21 @@ test("readable book files, approved edits, and publication exports", async (t) =
     book.deleteChapter(root, first.id),
     /at least one chapter/,
   );
+});
+
+test("accepting a deletion at the start preserves the revision for the next edit", async (t) => {
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), "assisted-writer-review-"));
+  t.after(() => fs.rm(parent, { recursive: true, force: true }));
+  const root = await book.createBook(parent, "Review", "");
+  const chapter = (await book.readBook(root)).chapters[0];
+  const body = "Remove me. The lamp flickered. Aaaaa!";
+  await book.saveChapter(root, chapter.id, body, chapter.title);
+  const hash = crypto.createHash("sha256").update(body).digest("hex");
+  await assert.rejects(book.approveSuggestion(root, chapter.id, "aaa", "a", hash), /matched uniquely/);
+  const first = await book.approveSuggestion(root, chapter.id, "Remove me.", "", hash);
+  assert.equal(first.body, "The lamp flickered. Aaaaa!");
+  const second = await book.approveSuggestion(root, chapter.id, "flickered", "glowed", first.hash, first.revision);
+  assert.equal(second.body, "The lamp glowed. Aaaaa!");
 });
 
 test("AI context and story trackers stay readable and respect request scope", async (t) => {

@@ -44,8 +44,8 @@ contextBridge.exposeInMainWorld("writer", {
   },
   review: (root, options) => invoke("ai:review", root, options),
   generateCommitMessage: (root, files) => invoke("ai:commit-message", root, files),
-  approve: (root, chapterId, quote, replacement, hash) =>
-    invoke("ai:approve", root, chapterId, quote, replacement, hash),
+  approve: (root, chapterId, quote, replacement, hash, revision) =>
+    invoke("ai:approve", root, chapterId, quote, replacement, hash, revision),
   export: (root, format) => invoke("book:export", root, format),
   gitStatus: (root) => invoke("git:status", root),
   gitInit: (root) => invoke("git:init", root),

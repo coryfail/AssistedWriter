@@ -1,10 +1,13 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { FormattingToolbar, manuscriptExtensions, referenceExtensions } from "./manuscript-editor.jsx";
 import { WebAccessPanel } from "./web-access-panel.jsx";
 import { downloadDraft, readDraft, storeDraft, clearDraft } from "./drafts.mjs";
 import { MarkdownDisplay } from "./markdown-display.mjs";
+import { ReviewQueue } from "./review-queue.jsx";
+import { EditorialReviewMarks, locateQuote, manuscriptText, readEditorReview,
+  showReviewMarks, storeEditorReview, uniqueQuoteIndex } from "./editorial-review.mjs";
 import { addTrackerEntry, deleteTrackerEntry, parseTracker,
   updateTrackerEntry, updateTrackerSegment } from "./tracker.mjs";
 import {
@@ -171,8 +174,14 @@ function App() {
   const [brainstormInput, setBrainstormInput] = useState("");
   const [brainstormMessages, setBrainstormMessages] = useState([]);
   const [aiPending, setAiPending] = useState(null);
-  const [result, setResult] = useState(null);
+  const [assistantResult, setResult] = useState(null);
+  const [editorReport, setEditorReport] = useState(null);
+  const [hiddenReview, setHiddenReview] = useState(null);
   const [resultRevision, setResultRevision] = useState(0);
+  const [reviewSelection, setReviewSelection] = useState(0);
+  const [inlineReview, setInlineReview] = useState(false);
+  const [locatedEdit, setLocatedEdit] = useState(null);
+  const [reviewActionPending, setReviewActionPending] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saveState, setSaveState] = useState("Saved");
   const [toast, setToast] = useState("");
@@ -205,6 +214,8 @@ function App() {
   const notesTimer = useRef(null);
   const brainstormLastMessageRef = useRef(null);
   const reviewResultRef = useRef(null);
+  const reviewLock = useRef(false);
+  const reviewDecision = useRef(null);
   bookRef.current = book;
   useEffect(() => {
     brainstormLastMessageRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
@@ -213,7 +224,7 @@ function App() {
     if (resultRevision) reviewResultRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, [resultRevision]);
   const editor = useEditor({
-    extensions: manuscriptExtensions(),
+    extensions: [...manuscriptExtensions(), EditorialReviewMarks],
     content: "",
     editorProps: { attributes: { spellcheck: "true", "aria-label": "Manuscript" } },
     onUpdate: ({ editor }) => editManuscript(editor.getMarkdown(), titleRef.current),
@@ -255,6 +266,68 @@ function App() {
     [],
   );
   const current = book?.chapters.find((c) => c.id === selectedId);
+  const chapterRevision = book?.revisions?.chapters?.[selectedId];
+  const savedReport = editorReport?.root === book?.root && editorReport?.chapterId === selectedId
+    ? editorReport : null;
+  const result = section !== "write" || sidePanel === "git" ? null
+    : sidePanel === "editor" ? savedReport?.id === hiddenReview ? null : savedReport
+    : assistantResult?.root === book?.root && assistantResult?.chapterId === selectedId ? assistantResult : null;
+  const reviewStale = Boolean(result && (result.stale || draftConflict || manuscriptDraft.current ||
+    result.chapterRevision !== chapterRevision));
+  const { available, ranges } = useMemo(() => {
+    const available = new Set();
+    const ranges = new Map();
+    if (!result || reviewStale || !editor || !current) return { available, ranges };
+    const manuscript = manuscriptText(editor.state.doc);
+    result.suggestions.forEach((suggestion, index) => {
+      if (suggestion.status || uniqueQuoteIndex(current.body, suggestion.quote) === -1) return;
+      available.add(index);
+      const range = locateQuote(editor, manuscript, suggestion.quote);
+      if (range) ranges.set(index, range);
+    });
+    return { available, ranges };
+  }, [editor, result, reviewStale, current?.body]);
+  reviewDecision.current = decideEdit;
+  useEffect(() => {
+    setEditorReport(book?.root && selectedId ? readEditorReview(book.root, selectedId) : null);
+    setHiddenReview(null);
+  }, [book?.root, selectedId]);
+  useEffect(() => {
+    setReviewSelection(0);
+    setInlineReview(false);
+    setLocatedEdit(null);
+  }, [result?.id]);
+  useEffect(() => {
+    if (!editor || section !== "write") return;
+    const located = locatedEdit?.reportId === result?.id ? locatedEdit?.index : undefined;
+    const visible = panelOpen && !reviewStale;
+    const inline = visible && inlineReview && result?.action === "editor";
+    const active = located ?? reviewSelection;
+    const marks = inline ? ranges : new Map();
+    if (visible && !inline && ranges.has(located)) marks.set(located, ranges.get(located));
+    const renderActions = inline && ranges.has(active) ? () => {
+      const controls = document.createElement("span");
+      controls.className = "manuscript-review-actions";
+      controls.contentEditable = "false";
+      controls.setAttribute("role", "group");
+      controls.setAttribute("aria-label", "Decide this edit");
+      for (const [status, label] of [["accepted", "Accept"], ["denied", "Deny"]]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        button.disabled = reviewActionPending || busy;
+        button.addEventListener("mousedown", (event) => event.preventDefault());
+        button.addEventListener("click", () => reviewDecision.current(active, status));
+        controls.append(button);
+      }
+      return controls;
+    } : null;
+    showReviewMarks(editor, marks, active, renderActions);
+    if (visible && located !== undefined && marks.has(located)) {
+      editor.view.dom.querySelector(`[data-review-edit="${located}"]`)?.scrollIntoView({ block: "center" });
+    }
+  }, [editor, section, panelOpen, result?.id, reviewStale, inlineReview, reviewSelection,
+    locatedEdit, ranges, reviewActionPending, busy]);
   reconcileRef.current = reconcileExternalBook;
   useEffect(() => {
     const unsubscribe = api?.onBookChanged?.((change) => reconcileRef.current?.(change));
@@ -591,6 +664,7 @@ function App() {
   }
 
   async function flush() {
+    if (reviewLock.current) throw new Error("Wait for the edit to finish saving.");
     clearTimeout(timer.current);
     clearTimeout(notesTimer.current);
     if (!book || !selectedRef.current) return;
@@ -881,6 +955,7 @@ function App() {
   }
 
   async function runReview(action) {
+    if (busy || reviewLock.current) return;
     if (!hasKey) {
       setModal("settings");
       return;
@@ -890,20 +965,27 @@ function App() {
     setAiPending(action === "ask" ? "Thinking through your question…"
       : action === "continuity" ? "Checking your story's continuity…"
       : action === "editor" ? "Editing your chapter…" : "Reviewing your chapter…");
+    const root = book.root;
+    const chapterId = selectedId;
+    setBusy(true);
     try {
       await flush();
-      setBusy(true);
-      setResult(null);
+      if (rootRef.current !== root || selectedRef.current !== chapterId) return;
       const { from, to } = editor.state.selection;
       const selection = section === "write" ? editor.state.doc.textBetween(from, to, "\n") : "";
-      const response = await api.review(book.root, {
+      const response = await api.review(root, {
         action,
-        chapterId: selectedId,
+        chapterId,
         selection,
         question: "",
       });
-      setResult(response);
-      setResultRevision((value) => value + 1);
+      const report = { ...response, root, id: crypto.randomUUID() };
+      if (action === "editor") saveEditorReport(report);
+      else if (rootRef.current === root && selectedRef.current === chapterId) setResult(report);
+      if (rootRef.current === root && selectedRef.current === chapterId) {
+        setHiddenReview(null);
+        setResultRevision((value) => value + 1);
+      }
     } catch (error) {
       announce(error.message);
     } finally {
@@ -984,45 +1066,85 @@ function App() {
     }
   }
 
-  async function approve(suggestion, index) {
+  function saveEditorReport(report) {
+    if (rootRef.current === report.root && selectedRef.current === report.chapterId) setEditorReport(report);
+    return storeEditorReview(report);
+  }
+
+  function selectReviewEdit(index, locate = false) {
+    setReviewSelection(index);
+    setLocatedEdit(locate && ranges.has(index) ? { reportId: result.id, index } : null);
+  }
+
+  function toggleInlineReview(index) {
+    if (inlineReview) {
+      setInlineReview(false);
+      setLocatedEdit(null);
+      return;
+    }
+    setInlineReview(true);
+    selectReviewEdit(ranges.has(index) ? index : ranges.keys().next().value, true);
+  }
+
+  async function decideEdit(index, status, nextIndex) {
+    if (!result || reviewLock.current || busy || reviewStale ||
+      rootRef.current !== result.root || selectedRef.current !== result.chapterId ||
+      manuscriptDraft.current || manuscriptConflict.current ||
+      bookRef.current?.revisions.chapters[result.chapterId] !== result.chapterRevision) return;
+    const suggestion = result.suggestions[index];
+    if (!suggestion || suggestion.status || (status === "accepted" && !available.has(index))) return;
+    const { root, chapterId } = result;
+
+    function updateReport(report) {
+      if (report.action === "editor") return saveEditorReport(report);
+      setResult((previous) => previous?.id === report.id ? report : previous);
+      return true;
+    }
+
+    const next = nextIndex ?? [...result.suggestions.keys()].find((candidate) =>
+      candidate !== index && !result.suggestions[candidate].status);
+    let applied;
+    if (status === "accepted") {
+      reviewLock.current = true;
+      setReviewActionPending(true);
+      editor.setEditable(false, false);
+    }
     try {
-      await flush();
-      const applied = await api.approve(
-        book.root,
-        selectedId,
-        suggestion.quote,
-        suggestion.replacement,
-        result.sourceHash,
-      );
-      editor.commands.setContent(applied.body, {
-        contentType: "markdown",
-        emitUpdate: false,
+      if (status === "accepted") {
+        applied = await api.approve(root, chapterId, suggestion.quote, suggestion.replacement,
+          result.sourceHash, result.chapterRevision);
+        if (rootRef.current === root && selectedRef.current === chapterId) {
+          const revision = bookRef.current.revisions.chapters[chapterId];
+          if (revision === result.chapterRevision || revision === applied.revision) {
+            recordChapterRevision(chapterId, { revisions: { chapter: applied.revision } }, applied.body);
+            if (manuscriptDraft.current) markDraftConflict(true);
+            else {
+              editor.commands.setContent(applied.body, { contentType: "markdown", emitUpdate: false });
+              setSaveState("Saved");
+            }
+          }
+        }
+      }
+      const saved = updateReport({
+        ...result,
+        ...(applied && { sourceHash: applied.hash, chapterRevision: applied.revision }),
+        suggestions: result.suggestions.map((item, candidate) => candidate === index ? { ...item, status } : item),
       });
-      const updatedBook = {
-        ...bookRef.current,
-        chapters: bookRef.current.chapters.map((chapter) => chapter.id === selectedId
-          ? { ...chapter, body: applied.body } : chapter),
-        revisions: {
-          ...bookRef.current.revisions,
-          chapters: { ...bookRef.current.revisions.chapters, [selectedId]: applied.revision },
-        },
-      };
-      bookRef.current = updatedBook;
-      setBook((prev) => ({
-        ...prev,
-        revisions: updatedBook.revisions,
-        chapters: prev.chapters.map((c) =>
-          c.id === selectedId ? { ...c, body: applied.body } : c,
-        ),
-      }));
-      setResult((prev) => ({
-        ...prev,
-        sourceHash: applied.hash,
-        suggestions: prev.suggestions.filter((_, i) => i !== index),
-      }));
-      announce("Edit applied to the chapter.");
+      setReviewSelection(next ?? index);
+      setLocatedEdit(inlineReview && next !== undefined ? { reportId: result.id, index: next } : null);
+      const message = status === "accepted" ? "Edit accepted and saved." : "Edit denied.";
+      announce(saved ? message : message + " Review history could not be saved on this device.");
     } catch (error) {
+      if (isExternalChange(error) || error.message.includes("changed since this review")) {
+        updateReport({ ...result, stale: true });
+      }
       announce(error.message);
+    } finally {
+      if (status === "accepted") {
+        editor.setEditable(true, false);
+        reviewLock.current = false;
+        setReviewActionPending(false);
+      }
     }
   }
 
@@ -1438,7 +1560,7 @@ function App() {
         </header>
         {section === "write" ? (
           <>
-            <FormattingToolbar editor={editor} hint="A SPACE FOR YOUR WORDS" />
+            <FormattingToolbar editor={reviewActionPending ? null : editor} hint="A SPACE FOR YOUR WORDS" />
             {draftConflict && <section className="manuscript-conflict" role="alert">
               <div><strong>Another edit reached the book first.</strong><p>Your desktop draft is still here. Download it before opening the saved chapter.</p></div>
               <button className="secondary" onClick={() => downloadDraft(title, editor?.getMarkdown() || "")}>Download draft</button>
@@ -1455,11 +1577,16 @@ function App() {
                 <input
                   className="chapter-title"
                   value={title}
+                  readOnly={reviewActionPending}
                   onChange={(event) => changeTitle(event.target.value)}
                   aria-label="Chapter title"
                 />
                 <div className="chapter-rule" />
-                <EditorContent editor={editor} className="prose-editor" />
+                <EditorContent editor={editor} className="prose-editor" onClick={(event) => {
+                  if (!inlineReview || !panelOpen || reviewActionPending) return;
+                  const mark = event.target.closest("[data-review-edit]");
+                  if (mark) selectReviewEdit(Number(mark.dataset.reviewEdit));
+                }} />
                 <div className="page-end">✦</div>
               </div>
             </div>
@@ -1798,7 +1925,7 @@ function App() {
                 <div className="prompt-actions assistant-tools">
                   <button
                     onClick={() => runReview("chapter")}
-                    disabled={busy || section !== "write"}
+                    disabled={busy || reviewActionPending || section !== "write"}
                   >
                     <SearchCheck size={18} />
                     <span>
@@ -1808,7 +1935,7 @@ function App() {
                   </button>
                   <button
                     onClick={() => runReview("continuity")}
-                    disabled={busy || section !== "write"}
+                    disabled={busy || reviewActionPending || section !== "write"}
                   >
                     <BookOpen size={18} />
                     <span>
@@ -1869,11 +1996,11 @@ function App() {
                   <h4>Polish without losing your voice.</h4>
                   <p>
                     Proofreading and copyedit suggestions appear below. Nothing
-                    changes until you approve each edit.
+                    changes until you accept an edit.
                   </p>
                   <button
                     className="editor-run"
-                    disabled={busy || section !== "write"}
+                    disabled={busy || reviewActionPending || draftConflict || section !== "write"}
                     onClick={() => runReview("editor")}
                   >
                     {busy ? (
@@ -1883,13 +2010,18 @@ function App() {
                     )}{" "}
                     Review chapter
                   </button>
+                  {savedReport && !result && section === "write" && <button type="button"
+                    className="reopen-review" onClick={() => {
+                      setHiddenReview(null);
+                      setResultRevision((value) => value + 1);
+                    }}>Show last review</button>}
                 </div>
                 <div className="editor-rules">
                   <div>
                     <Check size={15} /> Exact before-and-after suggestions
                   </div>
                   <div>
-                    <Check size={15} /> One approval per edit
+                    <Check size={15} /> One decision per edit
                   </div>
                   <div>
                     <Check size={15} /> Reports saved as readable JSON
@@ -1897,17 +2029,25 @@ function App() {
                 </div>
               </>
             )}
-            {sidePanel !== "git" && result && (
+            {result && (
               <div className="review-result" ref={reviewResultRef}>
                 <div className="result-heading">
                   <span className="eyebrow">
                     {result.action === "editor" ? "EDITOR REPORT" : "ASSISTANT RESPONSE"}
                   </span>
-                  <button className="icon" onClick={() => setResult(null)}>
+                  <button className="icon" aria-label="Hide report" disabled={reviewActionPending}
+                    onClick={() => result.action === "editor" ? setHiddenReview(result.id) : setResult(null)}>
                     <X size={17} />
                   </button>
                 </div>
-                <MarkdownDisplay text={result.summary} className="result-summary" />
+                {result.action === "editor" && result.suggestions.length > 0 ?
+                  <details className="review-summary">
+                    <summary>Review summary</summary>
+                    <MarkdownDisplay text={result.summary} className="result-summary" />
+                  </details> : <MarkdownDisplay text={result.summary} className="result-summary" />}
+                {result.sent?.chapterTruncated && <p className="review-notice">
+                  This review covers the first 50,000 characters of the chapter.
+                </p>}
                 {result.warnings?.length > 0 && <div className="result-group">
                   <h5>Continuity warnings <span>{result.warnings.length}</span></h5>
                   {result.warnings.map((warning, i) => <div className="finding" key={i}>
@@ -1930,46 +2070,14 @@ function App() {
                     ))}
                   </div>
                 )}
-                {result.suggestions?.length > 0 && (
-                  <div className="result-group">
-                    <h5>
-                      Suggested edits <span>{result.suggestions.length}</span>
-                    </h5>
-                    {result.suggestions.map((suggestion, i) => (
-                      <div
-                        className="suggestion"
-                        key={`${i}-${suggestion.quote}`}
-                      >
-                        <span className="suggestion-label">
-                          {suggestion.category}
-                        </span>
-                        <div className="before">{suggestion.quote}</div>
-                        <div className="after">{suggestion.replacement}</div>
-                        <p>{suggestion.reason}</p>
-                        <div className="suggestion-actions">
-                          <button
-                            className="apply"
-                            onClick={() => approve(suggestion, i)}
-                          >
-                            <Check size={14} /> Apply edit
-                          </button>
-                          <button
-                            onClick={() =>
-                              setResult((prev) => ({
-                                ...prev,
-                                suggestions: prev.suggestions.filter(
-                                  (_, n) => n !== i,
-                                ),
-                              }))
-                            }
-                          >
-                            <X size={14} /> Dismiss
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {result.suggestions?.length > 0 && <ReviewQueue key={result.id}
+                  report={result} selection={reviewSelection} stale={reviewStale}
+                  locked={reviewActionPending || busy} available={available} ranges={ranges}
+                  inline={inlineReview} onInline={result.action === "editor" ? toggleInlineReview : null}
+                  onSelect={(index) => selectReviewEdit(index, inlineReview)}
+                  onLocate={(index) => selectReviewEdit(index, true)} onDecide={decideEdit} />}
+                {result.action === "editor" && !result.suggestions.length &&
+                  <p className="edit-review-status">No edits available to accept.</p>}
                 <div className="scope-note">
                   Read: {result.sent?.chapter}
                   {result.sent?.bookNotes ? ", book notes" : ""}

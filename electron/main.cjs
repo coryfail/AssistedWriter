@@ -414,8 +414,8 @@ ipcMain.handle("ai:commit-message", async (_event, root, files) => {
 });
 handleBook(
   "ai:approve",
-  async (_event, root, chapterId, quote, replacement, hash) => {
-    const result = await book.approveSuggestion(root, chapterId, quote, replacement, hash);
+  async (_event, root, chapterId, quote, replacement, hash, expectedRevision) => {
+    const result = await book.approveSuggestion(root, chapterId, quote, replacement, hash, expectedRevision);
     const manifest = await book.loadManifest(root);
     const chapter = manifest.chapters.find((item) => item.id === chapterId);
     recordBookRevision(root, `chapters/${chapter.file}`, result.revision);

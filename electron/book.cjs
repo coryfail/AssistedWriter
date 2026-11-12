@@ -530,6 +530,7 @@ async function approveSuggestion(
   quote,
   replacement,
   expectedHash,
+  expectedRevision,
 ) {
   const manifest = await loadManifest(root);
   const chapter = manifest.chapters.find((c) => c.id === chapterId);
@@ -539,26 +540,26 @@ async function approveSuggestion(
   const content = await fs.readFile(chapterPath(root, chapter), "utf8");
   const body = withoutHeading(content);
   const hash = crypto.createHash("sha256").update(body).digest("hex");
-  if (hash !== expectedHash)
+  if (hash !== expectedHash || (expectedRevision && revision(content) !== expectedRevision))
     throw new Error(
       "The chapter changed since this review. Run the review again before applying this suggestion.",
     );
   const first = body.indexOf(quote);
-  if (first < 0 || body.indexOf(quote, first + quote.length) >= 0)
+  if (first < 0 || body.indexOf(quote, first + 1) >= 0)
     throw new Error(
       "The quoted text could not be matched uniquely. Please make this edit manually.",
     );
-  const updated =
-    body.slice(0, first) + replacement + body.slice(first + quote.length);
+  const updated = (body.slice(0, first) + replacement + body.slice(first + quote.length)).trim();
+  const updatedContent = heading(chapter.title, updated);
   await atomicWrite(
     chapterPath(root, chapter),
-    heading(chapter.title, updated),
+    updatedContent,
     revision(content),
   );
   return {
     body: updated,
     hash: crypto.createHash("sha256").update(updated).digest("hex"),
-    revision: revision(heading(chapter.title, updated)),
+    revision: revision(updatedContent),
   };
 }
 
